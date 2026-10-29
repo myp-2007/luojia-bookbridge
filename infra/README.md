@@ -1,5 +1,11 @@
 # Infrastructure
 
-This directory will contain Docker Compose, Caddy, environment examples, backup scripts and deployment notes.
+This directory contains Docker Compose, Caddy, environment examples, backup scripts and deployment notes.
 
-The first deployment target is one server running the frontend static files, FastAPI, PostgreSQL and local storage volumes.
+The first backend deployment target is one server running FastAPI and PostgreSQL. Start it from the repository root with:
+
+```bash
+docker compose -f infra/docker-compose.yml up --build
+```
+
+The API container runs Alembic migrations before starting FastAPI.
