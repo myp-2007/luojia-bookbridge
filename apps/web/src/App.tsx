@@ -3,7 +3,7 @@ import './App.css'
 import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
-import { createBook, createReservation, fetchBooks } from './features/books/book-api'
+import { createBook, createReservation, fetchBooks, uploadBookImage } from './features/books/book-api'
 import { mockBooks } from './data/mock-books'
 import type { Book } from './types/books'
 
@@ -59,8 +59,9 @@ function App() {
     }
   }
 
-  const publishBook = async (book: Book) => {
+  const publishBook = async (book: Book, imageFile?: File) => {
     const savedBook = useApi ? await createBook(book) : book
+    if (useApi && imageFile) await uploadBookImage(savedBook.id, imageFile)
     setBooks((current) => [savedBook, ...current])
     setShowPublish(false)
     notify(useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
