@@ -10,3 +10,9 @@ def get_current_user_id(x_user_id: str | None = Header(default=None)) -> str:
     if settings.allow_dev_auth:
         return 'dev-user'
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='请先完成身份认证')
+
+
+def require_admin(x_role: str | None = Header(default=None)) -> str:
+    if x_role == 'admin':
+        return 'admin'
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='需要管理员权限')
