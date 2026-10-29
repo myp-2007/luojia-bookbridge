@@ -10,7 +10,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import book, pickup_point, reservation  # noqa: F401
 from app.models import book_image  # noqa: F401
-from app.routers import books, health, reservations
+from app.routers import books, health, reports, reservations
 
 settings = get_settings()
 
@@ -29,3 +29,4 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allo
 app.include_router(health.router, prefix='/api/v1')
 app.include_router(books.router, prefix='/api/v1')
 app.include_router(reservations.router, prefix='/api/v1')
+app.include_router(reports.router, prefix='/api/v1')

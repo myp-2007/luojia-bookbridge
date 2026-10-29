@@ -421,6 +421,143 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/reports:
+    post:
+      tags:
+      - reports
+      summary: Create Report
+      operationId: create_report_api_v1_reports_post
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/reports/mine:
+    get:
+      tags:
+      - reports
+      summary: Read My Reports
+      operationId: read_my_reports_api_v1_reports_mine_get
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportRead'
+                title: Response Read My Reports Api V1 Reports Mine Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/reports/admin:
+    get:
+      tags:
+      - reports
+      summary: Read All Reports
+      operationId: read_all_reports_api_v1_reports_admin_get
+      parameters:
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportRead'
+                title: Response Read All Reports Api V1 Reports Admin Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/reports/admin/{report_id}/resolve:
+    post:
+      tags:
+      - reports
+      summary: Resolve Report
+      operationId: resolve_report_api_v1_reports_admin__report_id__resolve_post
+      parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Report Id
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportResolve'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Body_upload_book_image_api_v1_books__book_id__images_post:
@@ -679,6 +816,109 @@ components:
       - value
       - confidence
       title: RecognitionFieldRead
+    ReportCreate:
+      properties:
+        targetType:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Targettype
+        targetId:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Targetid
+        reason:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Reason
+        description:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Description
+      type: object
+      required:
+      - targetType
+      - targetId
+      - reason
+      - description
+      title: ReportCreate
+    ReportRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        reporterId:
+          type: string
+          title: Reporterid
+        targetType:
+          type: string
+          title: Targettype
+        targetId:
+          type: string
+          title: Targetid
+        reason:
+          type: string
+          title: Reason
+        description:
+          type: string
+          title: Description
+        status:
+          type: string
+          title: Status
+        handlerId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Handlerid
+        resolution:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolution
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        resolvedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Resolvedat
+      type: object
+      required:
+      - id
+      - reporterId
+      - targetType
+      - targetId
+      - reason
+      - description
+      - status
+      - handlerId
+      - resolution
+      - createdAt
+      - resolvedAt
+      title: ReportRead
+    ReportResolve:
+      properties:
+        status:
+          type: string
+          pattern: ^(resolved|rejected)$
+          title: Status
+        resolution:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Resolution
+      type: object
+      required:
+      - status
+      - resolution
+      title: ReportResolve
     ReservationCreate:
       properties:
         pickupPoint:
