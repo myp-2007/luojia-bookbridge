@@ -209,6 +209,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/books/{book_id}/ai-extract:
+    post:
+      tags:
+      - books
+      summary: Recognize Book
+      operationId: recognize_book_api_v1_books__book_id__ai_extract_post
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookRecognitionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/books/{book_id}/reservations:
     post:
       tags:
@@ -593,6 +628,33 @@ components:
       - aiStatus
       - createdAt
       title: BookRead
+    BookRecognitionRead:
+      properties:
+        title:
+          $ref: '#/components/schemas/RecognitionFieldRead'
+        author:
+          $ref: '#/components/schemas/RecognitionFieldRead'
+        publisher:
+          $ref: '#/components/schemas/RecognitionFieldRead'
+        edition:
+          $ref: '#/components/schemas/RecognitionFieldRead'
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        provider:
+          type: string
+          title: Provider
+      type: object
+      required:
+      - title
+      - author
+      - publisher
+      - edition
+      - warnings
+      - provider
+      title: BookRecognitionRead
     HTTPValidationError:
       properties:
         detail:
@@ -602,6 +664,21 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    RecognitionFieldRead:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+        confidence:
+          type: number
+          title: Confidence
+      type: object
+      required:
+      - value
+      - confidence
+      title: RecognitionFieldRead
     ReservationCreate:
       properties:
         pickupPoint:

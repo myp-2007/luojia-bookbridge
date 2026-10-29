@@ -76,3 +76,13 @@ def test_seller_can_upload_book_image() -> None:
         assert response.status_code == 201
         assert response.json()['contentType'] == 'image/png'
         assert response.json()['sizeBytes'] == len(b'fake-png-content')
+
+
+def test_mock_ai_recognition_returns_structured_fields() -> None:
+    with TestClient(app) as client:
+        created = client.post('/api/v1/books', json={'title': '高等数学', 'price': 22}, headers={'X-User-Id': 'seller-ai'}).json()
+        response = client.post(f"/api/v1/books/{created['id']}/ai-extract", headers={'X-User-Id': 'seller-ai'})
+        assert response.status_code == 200
+        assert response.json()['provider'] == 'mock'
+        assert response.json()['title']['value'] == '高等数学'
+        assert response.json()['title']['confidence'] > 0.9
