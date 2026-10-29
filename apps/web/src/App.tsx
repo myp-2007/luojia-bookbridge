@@ -4,6 +4,7 @@ import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
 import { createBook, createReservation, fetchBooks, uploadBookImage } from './features/books/book-api'
+import { MyReservationsDialog } from './features/reservations/MyReservationsDialog'
 import { mockBooks } from './data/mock-books'
 import type { Book } from './types/books'
 
@@ -18,6 +19,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('首页')
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
+  const [showReservations, setShowReservations] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const useApi = import.meta.env.VITE_USE_API === 'true'
@@ -105,11 +107,12 @@ function App() {
       </main>
 
       <nav className="bottom-nav" aria-label="主导航">
-        {['首页', '发现', '发布', '消息', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? setShowPublish(true) : (setActiveTab(item), item !== '首页' && notify(`${item}模块正在完善中`))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
+        {['首页', '发现', '发布', '消息', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? setShowPublish(true) : item === '我的' ? setShowReservations(true) : (setActiveTab(item), item !== '首页' && notify(`${item}模块正在完善中`))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
       </nav>
 
       {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} />}
       {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
+      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )
