@@ -57,6 +57,13 @@ export async function createReservation(bookId: string, pickupPoint?: string): P
   })
 }
 
+export async function uploadBookImage(bookId: string, file: File): Promise<void> {
+  const sellerId = import.meta.env.VITE_DEV_SELLER_ID ?? 'demo-seller'
+  const formData = new FormData()
+  formData.append('file', file)
+  await apiRequest(`/books/${bookId}/images`, { method: 'POST', headers: { 'X-User-Id': sellerId }, body: formData })
+}
+
 function toBook(book: BookApiRecord): Book {
   return {
     id: book.id,
