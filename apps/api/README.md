@@ -1,7 +1,22 @@
-# API backend
+# Luojia BookBridge API backend
 
-This directory will contain the FastAPI modular monolith.
+This directory contains the FastAPI modular monolith.
 
-Ownership: Member B.
+Current foundation:
 
-Business rules belong in services, database access belongs in repositories, and HTTP concerns belong in routers. Every database change must use an Alembic migration. Every public endpoint must be documented in `docs/api/openapi.yaml`.
+- health endpoint at `/api/v1/health`
+- book create, list, search and detail endpoints
+- development identity through the `X-User-Id` header
+- reservation creation with one-active-reservation protection
+- SQLite for local development and PostgreSQL-compatible SQLAlchemy models
+- API tests for health, book search and reservation concurrency rules
+
+Run locally from this directory:
+
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
+```
+
+OpenAPI documentation is available at `http://localhost:8000/docs` while the server is running. Database schema changes must use Alembic migrations before production deployment.
