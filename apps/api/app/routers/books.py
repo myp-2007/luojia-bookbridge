@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_id
 from app.db.session import get_db
+from app.providers.book_recognition import MockBookRecognitionProvider
+from app.schemas.ai import BookRecognitionRead, RecognitionFieldRead
 from app.schemas.books import BookCreate, BookListResponse, BookRead
 from app.schemas.images import BookImageRead
 from app.services.books import create_book, get_book, list_books, publish_book, to_book_read
@@ -66,3 +68,23 @@ async def upload_book_image(book_id: UUID, file: UploadFile = File(...), db: Ses
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return BookImageRead(id=image.id, book_id=image.book_id, original_name=image.original_name, content_type=image.content_type, size_bytes=image.size_bytes, url=f'/storage/{image.storage_path.replace(chr(92), chr(47))}', created_at=image.created_at)
+
+
+@router.post('/{book_id}/ai-extract', response_model=BookRecognitionRead)
+def recognize_book(book_id: UUID, db: Session = Depends(get_db), seller_id: str = Depends(get_current_user_id)) -> BookRecognitionRead:
+    book = get_book(db, book_id)
+    if book is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
+    if book.seller_id != seller_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='只能识别自己发布的书籍')
+    result = MockBookRecognitionProvider().recognize(book)
+    book.ai_status = 'succeeded'
+    db.commit()
+    return BookRecognitionRead(
+        title=RecognitionFieldRead(value=result.title.value, confidence=result.title.confidence),
+        author=RecognitionFieldRead(value=result.author.value, confidence=result.author.confidence),
+        publisher=RecognitionFieldRead(value=result.publisher.value, confidence=result.publisher.confidence),
+        edition=RecognitionFieldRead(value=result.edition.value, confidence=result.edition.confidence),
+        warnings=result.warnings,
+        provider='mock',
+    )
