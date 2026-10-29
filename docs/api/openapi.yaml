@@ -246,9 +246,9 @@ components:
           maxLength: 40
           title: Condition
           default: 待填写
-        has_notes:
+        hasNotes:
           type: boolean
-          title: Has Notes
+          title: Hasnotes
           default: false
         description:
           anyOf:
@@ -260,12 +260,12 @@ components:
           type: string
           title: Category
           default: textbook
-        pickup_point:
+        pickupPoint:
           anyOf:
           - type: string
             maxLength: 120
           - type: 'null'
-          title: Pickup Point
+          title: Pickuppoint
       type: object
       required:
       - title
@@ -280,9 +280,9 @@ components:
         page:
           type: integer
           title: Page
-        page_size:
+        pageSize:
           type: integer
-          title: Page Size
+          title: Pagesize
         total:
           type: integer
           title: Total
@@ -290,7 +290,7 @@ components:
       required:
       - items
       - page
-      - page_size
+      - pageSize
       - total
       title: BookListResponse
     BookRead:
@@ -299,9 +299,9 @@ components:
           type: string
           format: uuid
           title: Id
-        seller_id:
+        sellerId:
           type: string
-          title: Seller Id
+          title: Sellerid
         title:
           type: string
           title: Title
@@ -326,9 +326,9 @@ components:
         condition:
           type: string
           title: Condition
-        has_notes:
+        hasNotes:
           type: boolean
-          title: Has Notes
+          title: Hasnotes
         description:
           anyOf:
           - type: string
@@ -340,35 +340,35 @@ components:
         status:
           type: string
           title: Status
-        pickup_point:
+        pickupPoint:
           anyOf:
           - type: string
           - type: 'null'
-          title: Pickup Point
-        ai_status:
+          title: Pickuppoint
+        aiStatus:
           type: string
-          title: Ai Status
-        created_at:
+          title: Aistatus
+        createdAt:
           type: string
           format: date-time
-          title: Created At
+          title: Createdat
       type: object
       required:
       - id
-      - seller_id
+      - sellerId
       - title
       - author
       - publisher
       - edition
       - price
       - condition
-      - has_notes
+      - hasNotes
       - description
       - category
       - status
-      - pickup_point
-      - ai_status
-      - created_at
+      - pickupPoint
+      - aiStatus
+      - createdAt
       title: BookRead
     HTTPValidationError:
       properties:
@@ -381,18 +381,18 @@ components:
       title: HTTPValidationError
     ReservationCreate:
       properties:
-        pickup_point:
+        pickupPoint:
           anyOf:
           - type: string
             maxLength: 120
           - type: 'null'
-          title: Pickup Point
-        proposed_time:
+          title: Pickuppoint
+        proposedTime:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
-          title: Proposed Time
+          title: Proposedtime
       type: object
       title: ReservationCreate
     ReservationRead:
@@ -401,47 +401,47 @@ components:
           type: string
           format: uuid
           title: Id
-        book_id:
+        bookId:
           type: string
           format: uuid
-          title: Book Id
-        buyer_id:
+          title: Bookid
+        buyerId:
           type: string
-          title: Buyer Id
+          title: Buyerid
         status:
           type: string
           title: Status
-        pickup_point:
+        pickupPoint:
           anyOf:
           - type: string
           - type: 'null'
-          title: Pickup Point
-        proposed_time:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Proposed Time
-        expires_at:
+          title: Pickuppoint
+        proposedTime:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
-          title: Expires At
-        created_at:
+          title: Proposedtime
+        expiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expiresat
+        createdAt:
           type: string
           format: date-time
-          title: Created At
+          title: Createdat
       type: object
       required:
       - id
-      - book_id
-      - buyer_id
+      - bookId
+      - buyerId
       - status
-      - pickup_point
-      - proposed_time
-      - expires_at
-      - created_at
+      - pickupPoint
+      - proposedTime
+      - expiresAt
+      - createdAt
       title: ReservationRead
     ValidationError:
       properties:

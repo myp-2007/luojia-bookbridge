@@ -3,8 +3,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.naming import to_camel
 
-class BookCreate(BaseModel):
+
+class APIModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class BookCreate(APIModel):
     title: str = Field(min_length=1, max_length=200)
     author: str | None = Field(default=None, max_length=160)
     publisher: str | None = Field(default=None, max_length=160)
@@ -17,8 +23,8 @@ class BookCreate(BaseModel):
     pickup_point: str | None = Field(default=None, max_length=120)
 
 
-class BookRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class BookRead(APIModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
 
     id: UUID
     seller_id: str
@@ -37,7 +43,7 @@ class BookRead(BaseModel):
     created_at: datetime
 
 
-class BookListResponse(BaseModel):
+class BookListResponse(APIModel):
     items: list[BookRead]
     page: int
     page_size: int

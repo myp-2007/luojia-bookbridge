@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
+import { fetchBooks } from './features/books/book-api'
 import { mockBooks } from './data/mock-books'
 import type { Book } from './types/books'
 
@@ -18,8 +19,22 @@ function App() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [isLoadingBooks, setIsLoadingBooks] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+  const useApi = import.meta.env.VITE_USE_API === 'true'
 
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null
+
+  useEffect(() => {
+    if (!useApi) return
+    let active = true
+    setIsLoadingBooks(true)
+    fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
+      .then((items) => { if (active) { setBooks(items); setApiError(null) } })
+      .catch(() => { if (active) setApiError('暂时无法连接服务器，当前显示本地演示数据') })
+      .finally(() => { if (active) setIsLoadingBooks(false) })
+    return () => { active = false }
+  }, [category, query, useApi])
 
   const filteredBooks = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -80,6 +95,8 @@ function App() {
         <section className="section-block">
           <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校内热门书籍</h2></div><button className="text-button" onClick={() => setCategory('all')}>查看全部 <span>→</span></button></div>
           <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{categoryLabels[item]}</button>)}</div>
+          {apiError && <p className="api-notice">{apiError}</p>}
+          {isLoadingBooks && <p className="api-notice">正在从书架获取最新书籍...</p>}
           <div className="book-grid">{filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
         </section>
       </main>
