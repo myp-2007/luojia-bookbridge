@@ -47,3 +47,19 @@ def test_only_one_active_reservation_is_allowed() -> None:
         assert first.status_code == 201
         assert second.status_code == 409
         assert second.json()['detail'] == '该书当前不可预约'
+
+
+def test_seller_can_confirm_and_buyer_can_cancel() -> None:
+    with TestClient(app) as client:
+        created = client.post('/api/v1/books', json={'title': '大学物理', 'price': 16}, headers={'X-User-Id': 'seller-3'})
+        book_id = created.json()['id']
+        reservation = client.post(f'/api/v1/books/{book_id}/reservations', json={}, headers={'X-User-Id': 'buyer-3'}).json()
+
+        confirmed = client.post(f"/api/v1/reservations/{reservation['id']}/confirm", headers={'X-User-Id': 'seller-3'})
+        assert confirmed.status_code == 200
+        assert confirmed.json()['status'] == 'confirmed'
+
+        cancelled = client.post(f"/api/v1/reservations/{reservation['id']}/cancel", headers={'X-User-Id': 'buyer-3'})
+        assert cancelled.status_code == 200
+        assert cancelled.json()['status'] == 'cancelled'
+        assert client.get(f'/api/v1/books/{book_id}').json()['status'] == 'available'
