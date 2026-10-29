@@ -86,3 +86,15 @@ def test_mock_ai_recognition_returns_structured_fields() -> None:
         assert response.json()['provider'] == 'mock'
         assert response.json()['title']['value'] == '高等数学'
         assert response.json()['title']['confidence'] > 0.9
+
+
+def test_report_and_admin_resolution_flow() -> None:
+    with TestClient(app) as client:
+        created = client.post('/api/v1/reports', json={'targetType': 'book', 'targetId': 'book-1', 'reason': '描述不符', 'description': '书籍版本与发布信息不一致'}, headers={'X-User-Id': 'reporter-1'})
+        assert created.status_code == 201
+        report_id = created.json()['id']
+        denied = client.get('/api/v1/reports/admin', headers={'X-Role': 'student'})
+        assert denied.status_code == 403
+        resolved = client.post(f'/api/v1/reports/admin/{report_id}/resolve', json={'status': 'resolved', 'resolution': '已联系双方并完成核实'}, headers={'X-Role': 'admin'})
+        assert resolved.status_code == 200
+        assert resolved.json()['status'] == 'resolved'
