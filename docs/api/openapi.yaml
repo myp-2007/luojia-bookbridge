@@ -1,0 +1,16 @@
+openapi: 3.1.0
+info:
+  title: Luojia BookBridge API
+  version: 0.1.0
+  description: REST API for the campus second-hand book reuse platform.
+servers:
+  - url: http://localhost:8000
+    description: Local development
+tags:
+  - name: auth
+  - name: books
+  - name: reservations
+  - name: transactions
+  - name: reports
+  - name: admin
+paths: {}

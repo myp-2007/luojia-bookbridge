@@ -1,0 +1,35 @@
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Python / backend
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local data and generated files
+storage/*
+!storage/.gitkeep
+*.sqlite3
+*.db
+*.log
+*.bak
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
