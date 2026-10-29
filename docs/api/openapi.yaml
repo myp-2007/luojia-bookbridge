@@ -168,6 +168,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/books/{book_id}/images:
+    post:
+      tags:
+      - books
+      summary: Upload Book Image
+      operationId: upload_book_image_api_v1_books__book_id__images_post
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_book_image_api_v1_books__book_id__images_post'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookImageRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/books/{book_id}/reservations:
     post:
       tags:
@@ -347,6 +388,16 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    Body_upload_book_image_api_v1_books__book_id__images_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_book_image_api_v1_books__book_id__images_post
     BookCreate:
       properties:
         title:
@@ -406,6 +457,42 @@ components:
       required:
       - title
       title: BookCreate
+    BookImageRead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        bookId:
+          type: string
+          format: uuid
+          title: Bookid
+        originalName:
+          type: string
+          title: Originalname
+        contentType:
+          type: string
+          title: Contenttype
+        sizeBytes:
+          type: integer
+          title: Sizebytes
+        url:
+          type: string
+          title: Url
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - bookId
+      - originalName
+      - contentType
+      - sizeBytes
+      - url
+      - createdAt
+      title: BookImageRead
     BookListResponse:
       properties:
         items:

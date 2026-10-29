@@ -63,3 +63,16 @@ def test_seller_can_confirm_and_buyer_can_cancel() -> None:
         assert cancelled.status_code == 200
         assert cancelled.json()['status'] == 'cancelled'
         assert client.get(f'/api/v1/books/{book_id}').json()['status'] == 'available'
+
+
+def test_seller_can_upload_book_image() -> None:
+    with TestClient(app) as client:
+        created = client.post('/api/v1/books', json={'title': '数据结构', 'price': 21}, headers={'X-User-Id': 'seller-image'}).json()
+        response = client.post(
+            f"/api/v1/books/{created['id']}/images",
+            files={'file': ('cover.png', b'fake-png-content', 'image/png')},
+            headers={'X-User-Id': 'seller-image'},
+        )
+        assert response.status_code == 201
+        assert response.json()['contentType'] == 'image/png'
+        assert response.json()['sizeBytes'] == len(b'fake-png-content')
