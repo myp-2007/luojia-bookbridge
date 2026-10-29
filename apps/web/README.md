@@ -1,7 +1,23 @@
-# Web frontend
+# Luojia BookBridge web frontend
 
-This directory will contain the React + TypeScript + Vite frontend.
+This package is the mobile-first React + TypeScript + Vite frontend.
 
-Ownership: Member A.
+Ownership: frontend module.
 
-The frontend consumes the versioned REST API documented in `docs/api/openapi.yaml`. Use mock data while a backend endpoint is still under development. Do not create business rules in page components that belong in the backend.
+The current foundation includes:
+
+- responsive home page
+- search input with quick tags
+- textbook / reading / donation category tabs
+- mock book cards and empty search state
+- API client boundary at `src/lib/api-client.ts`
+- typed book model at `src/types/books.ts`
+
+Run locally:
+
+```bash
+npm install
+npm run dev
+```
+
+The API base URL is configured with `VITE_API_BASE_URL`. The page currently uses mock data so it can be developed before the backend is ready.
