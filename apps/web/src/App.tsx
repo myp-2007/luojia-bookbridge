@@ -3,7 +3,7 @@ import './App.css'
 import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
-import { fetchBooks } from './features/books/book-api'
+import { createBook, createReservation, fetchBooks } from './features/books/book-api'
 import { mockBooks } from './data/mock-books'
 import type { Book } from './types/books'
 
@@ -19,7 +19,6 @@ function App() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const [showPublish, setShowPublish] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const [isLoadingBooks, setIsLoadingBooks] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const useApi = import.meta.env.VITE_USE_API === 'true'
 
@@ -28,11 +27,9 @@ function App() {
   useEffect(() => {
     if (!useApi) return
     let active = true
-    setIsLoadingBooks(true)
     fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
       .then((items) => { if (active) { setBooks(items); setApiError(null) } })
       .catch(() => { if (active) setApiError('暂时无法连接服务器，当前显示本地演示数据') })
-      .finally(() => { if (active) setIsLoadingBooks(false) })
     return () => { active = false }
   }, [category, query, useApi])
 
@@ -50,17 +47,23 @@ function App() {
     window.setTimeout(() => setToast(null), 2600)
   }
 
-  const reserveBook = () => {
+  const reserveBook = async () => {
     if (!selectedBook) return
-    setBooks((current) => current.map((book) => book.id === selectedBook.id ? { ...book, status: 'reserved' } : book))
-    setSelectedBookId(null)
-    notify('预约已提交，等待卖家确认')
+    try {
+      if (useApi) await createReservation(selectedBook.id, selectedBook.pickupPoint)
+      setBooks((current) => current.map((book) => book.id === selectedBook.id ? { ...book, status: 'reserved' } : book))
+      setSelectedBookId(null)
+      notify('预约已提交，等待卖家确认')
+    } catch {
+      notify('预约失败，请检查服务器连接或书籍状态')
+    }
   }
 
-  const publishBook = (book: Book) => {
-    setBooks((current) => [book, ...current])
+  const publishBook = async (book: Book) => {
+    const savedBook = useApi ? await createBook(book) : book
+    setBooks((current) => [savedBook, ...current])
     setShowPublish(false)
-    notify('书籍已保存到本地演示列表')
+    notify(useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
   }
 
   const selectFeature = (nextCategory: Category) => {
@@ -96,7 +99,6 @@ function App() {
           <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校内热门书籍</h2></div><button className="text-button" onClick={() => setCategory('all')}>查看全部 <span>→</span></button></div>
           <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{categoryLabels[item]}</button>)}</div>
           {apiError && <p className="api-notice">{apiError}</p>}
-          {isLoadingBooks && <p className="api-notice">正在从书架获取最新书籍...</p>}
           <div className="book-grid">{filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
         </section>
       </main>

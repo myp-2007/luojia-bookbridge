@@ -29,6 +29,34 @@ export async function fetchBooks(query?: string, category?: string): Promise<Boo
   return response.items.map(toBook)
 }
 
+export async function createBook(book: Book): Promise<Book> {
+  const sellerId = import.meta.env.VITE_DEV_SELLER_ID ?? 'demo-seller'
+  const record = await apiRequest<BookApiRecord>('/books', {
+    method: 'POST',
+    headers: { 'X-User-Id': sellerId },
+    body: JSON.stringify({
+      title: book.title,
+      author: book.author === '待补充' ? null : book.author,
+      publisher: book.publisher === '待补充' ? null : book.publisher,
+      edition: book.edition === '待补充' ? null : book.edition,
+      price: book.price,
+      condition: book.condition,
+      category: book.category,
+      pickupPoint: book.pickupPoint === '请选择交接点' ? null : book.pickupPoint,
+    }),
+  })
+  return toBook(record)
+}
+
+export async function createReservation(bookId: string, pickupPoint?: string): Promise<void> {
+  const buyerId = import.meta.env.VITE_DEV_USER_ID ?? 'demo-buyer'
+  await apiRequest(`/books/${bookId}/reservations`, {
+    method: 'POST',
+    headers: { 'X-User-Id': buyerId },
+    body: JSON.stringify({ pickupPoint }),
+  })
+}
+
 function toBook(book: BookApiRecord): Book {
   return {
     id: book.id,
