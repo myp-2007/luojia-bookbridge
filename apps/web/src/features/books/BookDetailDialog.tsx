@@ -1,6 +1,6 @@
 import type { Book } from '../../types/books'
 
-export function BookDetailDialog({ book, onClose, onReserve, onReport }: { book: Book; onClose: () => void; onReserve: () => void; onReport: () => void }) {
+export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecognize }: { book: Book; onClose: () => void; onReserve: () => void; onReport: () => void; onRecognize: () => void }) {
   const isAvailable = book.status === 'available'
 
   return (
@@ -19,6 +19,7 @@ export function BookDetailDialog({ book, onClose, onReserve, onReport }: { book:
         </div>
         <div className="detail-note"><strong>交易提示</strong><p>预约成功后，双方在校内公共地点当面核对书籍，再完成付款和交接。</p></div>
         <button className="primary-action" disabled={!isAvailable} onClick={onReserve}>{isAvailable ? '预约交接' : '暂不可预约'}</button>
+        <button className="secondary-action" onClick={onRecognize}>AI 识别书籍信息</button>
         <button className="secondary-action" onClick={onReport}>反馈问题</button>
       </section>
     </div>
