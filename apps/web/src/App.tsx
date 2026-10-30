@@ -4,6 +4,7 @@ import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
 import { createBook, createReservation, fetchBooks, uploadBookImage } from './features/books/book-api'
+import { AIRecognitionDialog } from './features/ai/AIRecognitionDialog'
 import { MyReservationsDialog } from './features/reservations/MyReservationsDialog'
 import { ReportDialog } from './features/reports/ReportDialog'
 import { createReport } from './features/reports/report-api'
@@ -23,6 +24,7 @@ function App() {
   const [showPublish, setShowPublish] = useState(false)
   const [showReservations, setShowReservations] = useState(false)
   const [reportBookId, setReportBookId] = useState<string | null>(null)
+  const [aiBookId, setAiBookId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   const useApi = import.meta.env.VITE_USE_API === 'true'
@@ -120,10 +122,11 @@ function App() {
         {['首页', '发现', '发布', '消息', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? setShowPublish(true) : item === '我的' ? setShowReservations(true) : (setActiveTab(item), item !== '首页' && notify(`${item}模块正在完善中`))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
       </nav>
 
-      {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => setReportBookId(selectedBook.id)} />}
+      {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => setReportBookId(selectedBook.id)} onRecognize={() => setAiBookId(selectedBook.id)} />}
       {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
       {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} />}
       {reportBookId && <ReportDialog onClose={() => setReportBookId(null)} onSubmit={submitReport} />}
+      {aiBookId && <AIRecognitionDialog book={books.find((book) => book.id === aiBookId) ?? mockBooks[0]} useApi={useApi} onClose={() => setAiBookId(null)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )
