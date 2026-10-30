@@ -1,6 +1,15 @@
 import { apiRequest } from '../../lib/api-client'
 import type { Book, BookCategory, BookStatus } from '../../types/books'
 
+export interface BookRecognition {
+  title: { value: string | null; confidence: number }
+  author: { value: string | null; confidence: number }
+  publisher: { value: string | null; confidence: number }
+  edition: { value: string | null; confidence: number }
+  warnings: string[]
+  provider: string
+}
+
 interface BookApiRecord {
   id: string
   sellerId: string
@@ -62,6 +71,11 @@ export async function uploadBookImage(bookId: string, file: File): Promise<void>
   const formData = new FormData()
   formData.append('file', file)
   await apiRequest(`/books/${bookId}/images`, { method: 'POST', headers: { 'X-User-Id': sellerId }, body: formData })
+}
+
+export async function recognizeBook(bookId: string): Promise<BookRecognition> {
+  const sellerId = import.meta.env.VITE_DEV_SELLER_ID ?? 'demo-seller'
+  return apiRequest<BookRecognition>(`/books/${bookId}/ai-extract`, { method: 'POST', headers: { 'X-User-Id': sellerId } })
 }
 
 function toBook(book: BookApiRecord): Book {
