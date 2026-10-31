@@ -2,6 +2,7 @@ import type { Book } from '../../types/books'
 
 export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecognize }: { book: Book; onClose: () => void; onReserve: () => void; onReport: () => void; onRecognize: () => void }) {
   const isAvailable = book.status === 'available'
+  const statusLabels: Record<Book['status'], string> = { available: '在售', reserved: '已预约', completed: '已完成', offline: '已下架' }
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
@@ -9,7 +10,7 @@ export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecogni
         <button className="dialog-close" onClick={onClose} aria-label="关闭详情">×</button>
         <div className="detail-top">
           <div className="detail-cover book-cover" style={{ background: book.coverColor }} aria-hidden="true"><span>{book.coverText}</span></div>
-          <div className="detail-heading"><span className={`status-pill ${book.status}`}>{isAvailable ? '在售' : '已预约'}</span><h2 id="book-detail-title">{book.title}</h2><p>{book.author} · {book.publisher}</p><strong>¥{book.price}</strong></div>
+          <div className="detail-heading"><span className={`status-pill ${book.status}`}>{statusLabels[book.status]}</span><h2 id="book-detail-title">{book.title}</h2><p>{book.author} · {book.publisher}</p><strong>¥{book.price}</strong></div>
         </div>
         <div className="detail-grid">
           <DetailItem label="版本" value={book.edition} />
