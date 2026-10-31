@@ -23,4 +23,7 @@ class ReservationRead(APIModel):
     pickup_point: str | None
     proposed_time: datetime | None
     expires_at: datetime | None
+    seller_confirmed_at: datetime | None
+    buyer_confirmed_at: datetime | None
+    completed_at: datetime | None
     created_at: datetime

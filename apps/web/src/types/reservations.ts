@@ -8,5 +8,8 @@ export interface Reservation {
   pickupPoint: string | null
   proposedTime: string | null
   expiresAt: string | null
+  sellerConfirmedAt: string | null
+  buyerConfirmedAt: string | null
+  completedAt: string | null
   createdAt: string
 }

@@ -65,6 +65,28 @@ def test_seller_can_confirm_and_buyer_can_cancel() -> None:
         assert client.get(f'/api/v1/books/{book_id}').json()['status'] == 'available'
 
 
+def test_both_parties_confirm_handover_completes_transaction() -> None:
+    with TestClient(app) as client:
+        created = client.post('/api/v1/books', json={'title': '离散数学', 'price': 18}, headers={'X-User-Id': 'seller-handover'}).json()
+        book_id = created['id']
+        reservation = client.post(f'/api/v1/books/{book_id}/reservations', json={}, headers={'X-User-Id': 'buyer-handover'}).json()
+        reservation_id = reservation['id']
+
+        accepted = client.post(f'/api/v1/reservations/{reservation_id}/confirm', headers={'X-User-Id': 'seller-handover'})
+        assert accepted.status_code == 200
+
+        seller_confirmed = client.post(f'/api/v1/reservations/{reservation_id}/seller-confirm', headers={'X-User-Id': 'seller-handover'})
+        assert seller_confirmed.status_code == 200
+        assert seller_confirmed.json()['status'] == 'confirmed'
+        assert seller_confirmed.json()['sellerConfirmedAt']
+
+        buyer_confirmed = client.post(f'/api/v1/reservations/{reservation_id}/buyer-confirm', headers={'X-User-Id': 'buyer-handover'})
+        assert buyer_confirmed.status_code == 200
+        assert buyer_confirmed.json()['status'] == 'completed'
+        assert buyer_confirmed.json()['completedAt']
+        assert client.get(f'/api/v1/books/{book_id}').json()['status'] == 'completed'
+
+
 def test_seller_can_upload_book_image() -> None:
     with TestClient(app) as client:
         created = client.post('/api/v1/books', json={'title': '数据结构', 'price': 21}, headers={'X-User-Id': 'seller-image'}).json()
