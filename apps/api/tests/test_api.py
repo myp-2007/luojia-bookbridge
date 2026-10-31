@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.db.base import Base
 from app.db.session import engine
+from app.core.config import get_settings
 from app.main import app
 
 
@@ -98,3 +99,29 @@ def test_report_and_admin_resolution_flow() -> None:
         resolved = client.post(f'/api/v1/reports/admin/{report_id}/resolve', json={'status': 'resolved', 'resolution': '已联系双方并完成核实'}, headers={'X-Role': 'admin'})
         assert resolved.status_code == 200
         assert resolved.json()['status'] == 'resolved'
+
+
+def test_dev_headers_are_disabled_when_dev_auth_is_off() -> None:
+    settings = get_settings()
+    previous_auth, previous_environment = settings.allow_dev_auth, settings.environment
+    settings.allow_dev_auth = False
+    try:
+        with TestClient(app) as client:
+            user_response = client.post('/api/v1/books', json={'title': '权限测试', 'price': 1}, headers={'X-User-Id': 'spoofed-user'})
+            admin_response = client.get('/api/v1/reports/admin', headers={'X-Role': 'admin'})
+        assert user_response.status_code == 401
+        assert admin_response.status_code == 403
+    finally:
+        settings.allow_dev_auth, settings.environment = previous_auth, previous_environment
+
+
+def test_dev_headers_are_disabled_in_production_even_if_flag_is_set() -> None:
+    settings = get_settings()
+    previous_auth, previous_environment = settings.allow_dev_auth, settings.environment
+    settings.allow_dev_auth, settings.environment = True, 'production'
+    try:
+        with TestClient(app) as client:
+            response = client.post('/api/v1/books', json={'title': '生产环境测试', 'price': 1}, headers={'X-User-Id': 'spoofed-user'})
+        assert response.status_code == 401
+    finally:
+        settings.allow_dev_auth, settings.environment = previous_auth, previous_environment
