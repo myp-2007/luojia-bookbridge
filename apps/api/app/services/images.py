@@ -2,6 +2,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -31,3 +32,7 @@ async def save_book_image(db: Session, book: Book, file: UploadFile) -> BookImag
     db.commit()
     db.refresh(image)
     return image
+
+
+def list_book_images(db: Session, book_id) -> list[BookImage]:
+    return list(db.scalars(select(BookImage).where(BookImage.book_id == book_id).order_by(BookImage.created_at, BookImage.id)).all())

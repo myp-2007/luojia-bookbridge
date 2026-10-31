@@ -76,6 +76,10 @@ def test_seller_can_upload_book_image() -> None:
         assert response.status_code == 201
         assert response.json()['contentType'] == 'image/png'
         assert response.json()['sizeBytes'] == len(b'fake-png-content')
+        listed = client.get(f"/api/v1/books/{created['id']}/images")
+        assert listed.status_code == 200
+        assert len(listed.json()) == 1
+        assert listed.json()[0]['url'].startswith('/storage/')
 
 
 def test_mock_ai_recognition_returns_structured_fields() -> None:
