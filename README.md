@@ -6,7 +6,7 @@ AI-assisted campus second-hand book trading and reuse platform.
 
 ## Current status
 
-The repository now contains a runnable MVP foundation:
+The repository contains a runnable MVP foundation and the current handoff status is tracked in [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md). The merged code is suitable for local demonstration, while authentication, real AI recognition and production deployment still require follow-up work.
 
 - React + Vite mobile-first book catalog.
 - FastAPI REST API with OpenAPI documentation.
