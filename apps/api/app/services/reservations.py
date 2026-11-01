@@ -22,6 +22,9 @@ def to_reservation_read(reservation: Reservation) -> ReservationRead:
         pickup_point=reservation.pickup_point,
         proposed_time=reservation.proposed_time,
         expires_at=reservation.expires_at,
+        seller_confirmed_at=reservation.seller_confirmed_at,
+        buyer_confirmed_at=reservation.buyer_confirmed_at,
+        completed_at=reservation.completed_at,
         created_at=reservation.created_at,
     )
 
@@ -61,10 +64,10 @@ def list_user_reservations(db: Session, user_id: str) -> list[Reservation]:
 
 
 def update_reservation_status(db: Session, reservation_id: UUID, actor_id: str, action: str) -> Reservation:
-    reservation = db.get(Reservation, reservation_id)
+    reservation = db.scalar(select(Reservation).where(Reservation.id == reservation_id).with_for_update())
     if reservation is None:
         raise LookupError('预约不存在')
-    book = db.get(Book, reservation.book_id)
+    book = db.scalar(select(Book).where(Book.id == reservation.book_id).with_for_update())
     if book is None:
         raise LookupError('书籍不存在')
 
@@ -87,6 +90,41 @@ def update_reservation_status(db: Session, reservation_id: UUID, actor_id: str, 
     if next_status not in ACTIVE_STATUSES:
         reservation.active_key = None
         book.status = BookStatus.AVAILABLE
+    db.commit()
+    db.refresh(reservation)
+    return reservation
+
+
+def confirm_handover(db: Session, reservation_id: UUID, actor_id: str, role: str) -> Reservation:
+    """Record one party's offline handover confirmation and complete when both agree."""
+    reservation = db.scalar(select(Reservation).where(Reservation.id == reservation_id).with_for_update())
+    if reservation is None:
+        raise LookupError('预约不存在')
+    book = db.scalar(select(Book).where(Book.id == reservation.book_id).with_for_update())
+    if book is None:
+        raise LookupError('书籍不存在')
+    if reservation.status == ReservationStatus.COMPLETED:
+        return reservation
+    if reservation.status != ReservationStatus.CONFIRMED:
+        raise ValueError('只有卖家确认预约后才能确认交接')
+
+    now = datetime.now(timezone.utc)
+    if role == 'buyer':
+        if reservation.buyer_id != actor_id:
+            raise PermissionError('只有买家可以确认买家交接')
+        reservation.buyer_confirmed_at = reservation.buyer_confirmed_at or now
+    elif role == 'seller':
+        if book.seller_id != actor_id:
+            raise PermissionError('只有卖家可以确认卖家交接')
+        reservation.seller_confirmed_at = reservation.seller_confirmed_at or now
+    else:
+        raise ValueError('不支持的确认角色')
+
+    if reservation.buyer_confirmed_at and reservation.seller_confirmed_at:
+        reservation.status = ReservationStatus.COMPLETED
+        reservation.completed_at = reservation.completed_at or now
+        reservation.active_key = None
+        book.status = BookStatus.COMPLETED
     db.commit()
     db.refresh(reservation)
     return reservation

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { cancelReservation, fetchMyReservations } from './reservation-api'
+import { cancelReservation, confirmBuyerHandover, fetchMyReservations } from './reservation-api'
 import type { Reservation } from '../../types/reservations'
 
 const statusLabels: Record<Reservation['status'], string> = {
@@ -10,6 +10,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice }: { useApi: bo
   const [items, setItems] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(useApi)
   const [error, setError] = useState<string | null>(null)
+  const [submittingId, setSubmittingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!useApi) return
@@ -28,6 +29,21 @@ export function MyReservationsDialog({ useApi, onClose, onNotice }: { useApi: bo
     }
   }
 
+  const confirmHandover = async (reservationId: string) => {
+    try {
+      setSubmittingId(reservationId)
+      if (useApi) {
+        const updated = await confirmBuyerHandover(reservationId)
+        setItems((current) => current.map((item) => item.id === updated.id ? updated : item))
+      }
+      onNotice('已记录你的交接确认，等待另一方确认')
+    } catch {
+      onNotice('确认失败，请确认卖家已接受预约')
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="reservation-dialog" role="dialog" aria-modal="true" aria-labelledby="reservation-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -37,7 +53,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice }: { useApi: bo
         {loading && <p className="api-notice">正在读取预约记录...</p>}
         {error && <p className="form-error">{error}</p>}
         {!loading && !error && useApi && !items.length && <div className="empty-state"><span>⌑</span><strong>还没有预约记录</strong><p>找到合适的书后，预约交接就会显示在这里。</p></div>}
-        {!!items.length && <div className="reservation-list">{items.map((item) => <article className="reservation-item" key={item.id}><div><strong>书籍预约</strong><span>{statusLabels[item.status]}</span></div><p>交接地点：{item.pickupPoint || '待确认'}</p><small>{item.proposedTime ? new Date(item.proposedTime).toLocaleString() : '时间待双方确认'}</small>{['pending', 'confirmed'].includes(item.status) && <button onClick={() => cancel(item.id)}>取消预约</button>}</article>)}</div>}
+        {!!items.length && <div className="reservation-list">{items.map((item) => <article className="reservation-item" key={item.id}><div><strong>书籍预约</strong><span>{statusLabels[item.status]}</span></div><p>交接地点：{item.pickupPoint || '待确认'}</p><small>{item.proposedTime ? new Date(item.proposedTime).toLocaleString() : '时间待双方确认'}</small>{item.status === 'confirmed' && <div className="handover-progress"><span className={item.buyerConfirmedAt ? 'is-done' : ''}>买家{item.buyerConfirmedAt ? '已确认' : '待确认'}</span><span className={item.sellerConfirmedAt ? 'is-done' : ''}>卖家{item.sellerConfirmedAt ? '已确认' : '待确认'}</span></div>}{item.status === 'confirmed' && !item.buyerConfirmedAt && <button disabled={submittingId === item.id} onClick={() => confirmHandover(item.id)}>{submittingId === item.id ? '提交中…' : '确认已完成交接'}</button>}{['pending', 'confirmed'].includes(item.status) && <button onClick={() => cancel(item.id)}>取消预约</button>}</article>)}</div>}
         <button className="secondary-action" onClick={onClose}>返回书架</button>
       </section>
     </div>
