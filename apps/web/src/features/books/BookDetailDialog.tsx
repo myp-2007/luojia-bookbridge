@@ -1,14 +1,24 @@
+import { useEffect, useState } from 'react'
 import type { Book } from '../../types/books'
+import { fetchBookImages, type BookImage } from './book-image-api'
 
 export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecognize }: { book: Book; onClose: () => void; onReserve: () => void; onReport: () => void; onRecognize: () => void }) {
   const isAvailable = book.status === 'available'
+  const [images, setImages] = useState<BookImage[]>([])
+
+  useEffect(() => {
+    if (import.meta.env.VITE_USE_API !== 'true') return
+    let active = true
+    fetchBookImages(book.id).then((result) => { if (active) setImages(result) }).catch(() => undefined)
+    return () => { active = false }
+  }, [book.id])
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="detail-dialog" role="dialog" aria-modal="true" aria-labelledby="book-detail-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="dialog-close" onClick={onClose} aria-label="关闭详情">×</button>
         <div className="detail-top">
-          <div className="detail-cover book-cover" style={{ background: book.coverColor }} aria-hidden="true"><span>{book.coverText}</span></div>
+          <div className="detail-cover book-cover" style={{ background: book.coverColor }} aria-hidden={images.length === 0}>{images[0] ? <img className="detail-cover-image" src={images[0].url} alt={`${book.title}封面`} /> : <span>{book.coverText}</span>}</div>
           <div className="detail-heading"><span className={`status-pill ${book.status}`}>{isAvailable ? '在售' : '已预约'}</span><h2 id="book-detail-title">{book.title}</h2><p>{book.author} · {book.publisher}</p><strong>¥{book.price}</strong></div>
         </div>
         <div className="detail-grid">

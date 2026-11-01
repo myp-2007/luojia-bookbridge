@@ -133,12 +133,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/books/{book_id}/publish:
-    post:
+  /api/v1/books/{book_id}/images:
+    get:
       tags:
       - books
-      summary: Publish Existing Book
-      operationId: publish_existing_book_api_v1_books__book_id__publish_post
+      summary: Read Book Images
+      operationId: read_book_images_api_v1_books__book_id__images_get
       parameters:
       - name: book_id
         in: path
@@ -147,28 +147,22 @@ paths:
           type: string
           format: uuid
           title: Book Id
-      - name: x-user-id
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-User-Id
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookRead'
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookImageRead'
+                title: Response Read Book Images Api V1 Books  Book Id  Images Get
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/books/{book_id}/images:
     post:
       tags:
       - books
@@ -203,6 +197,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookImageRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/books/{book_id}/publish:
+    post:
+      tags:
+      - books
+      summary: Publish Existing Book
+      operationId: publish_existing_book_api_v1_books__book_id__publish_post
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookRead'
         '422':
           description: Validation Error
           content:

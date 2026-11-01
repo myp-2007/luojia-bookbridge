@@ -10,7 +10,7 @@ from app.schemas.ai import BookRecognitionRead, RecognitionFieldRead
 from app.schemas.books import BookCreate, BookListResponse, BookRead
 from app.schemas.images import BookImageRead
 from app.services.books import create_book, get_book, list_books, publish_book, to_book_read
-from app.services.images import save_book_image
+from app.services.images import list_book_images, save_book_image
 
 router = APIRouter(prefix='/books', tags=['books'])
 
@@ -44,6 +44,25 @@ def read_book(book_id: UUID, db: Session = Depends(get_db)) -> BookRead:
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
     return to_book_read(book)
+
+
+@router.get('/{book_id}/images', response_model=list[BookImageRead])
+def read_book_images(book_id: UUID, db: Session = Depends(get_db)) -> list[BookImageRead]:
+    book = get_book(db, book_id)
+    if book is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
+    return [
+        BookImageRead(
+            id=image.id,
+            book_id=image.book_id,
+            original_name=image.original_name,
+            content_type=image.content_type,
+            size_bytes=image.size_bytes,
+            url=f'/storage/{image.storage_path.replace(chr(92), chr(47))}',
+            created_at=image.created_at,
+        )
+        for image in list_book_images(db, book_id)
+    ]
 
 
 @router.post('/{book_id}/publish', response_model=BookRead)
