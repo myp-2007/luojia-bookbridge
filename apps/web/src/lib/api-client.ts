@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
 export class ApiError extends Error {
   readonly code: string
@@ -18,6 +18,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    credentials: 'include',
   })
 
   if (!response.ok) {
@@ -27,6 +28,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       : typeof payload.detail === 'string' ? payload.detail : undefined
     const message = typeof payload.message === 'string' ? payload.message : detail ?? '请求失败，请稍后重试'
     const code = typeof payload.code === 'string' ? payload.code : 'API_ERROR'
+    if (response.status === 401) window.dispatchEvent(new Event('session-expired'))
     throw new ApiError(message, code, response.status)
   }
 

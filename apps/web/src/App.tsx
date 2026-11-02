@@ -9,6 +9,8 @@ import { MyReservationsDialog } from './features/reservations/MyReservationsDial
 import { ReportDialog } from './features/reports/ReportDialog'
 import { createReport } from './features/reports/report-api'
 import { mockBooks } from './data/mock-books'
+import { AccountDialog } from './features/account/AccountDialog'
+import { getMe, login, logout, setSignedInId, type User } from './features/auth/auth-api'
 import type { Book } from './types/books'
 
 type Category = 'all' | 'textbook' | 'reading' | 'donation'
@@ -16,7 +18,7 @@ type Category = 'all' | 'textbook' | 'reading' | 'donation'
 const categoryLabels: Record<Category, string> = { all: '全部', textbook: '教材交易', reading: '课外读物', donation: '公益捐赠' }
 
 function App() {
-  const [books, setBooks] = useState<Book[]>(mockBooks)
+  const [books, setBooks] = useState<Book[]>(import.meta.env.VITE_USE_API === 'false' ? mockBooks : [])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<Category>('all')
   const [activeTab, setActiveTab] = useState('首页')
@@ -27,7 +29,28 @@ function App() {
   const [aiBookId, setAiBookId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
-  const useApi = import.meta.env.VITE_USE_API === 'true'
+  const useApi = import.meta.env.VITE_USE_API !== 'false'
+  const [user, setUser] = useState<User | null>(null)
+  const [showAccount, setShowAccount] = useState(false)
+  const [catalogRevision, setCatalogRevision] = useState(0)
+
+  useEffect(() => {
+    if (!useApi) return
+    let active = true
+    getMe().then((current) => {
+      if (active) { setUser(current); setSignedInId(current.id) }
+    }).catch(() => undefined)
+    const expired = () => { setUser(null); setSignedInId('') }
+    window.addEventListener('session-expired', expired)
+    return () => { active = false; window.removeEventListener('session-expired', expired) }
+  }, [useApi])
+
+  function needLogin(action: () => void) {
+    if (useApi && !user) { setShowAccount(true); return }
+    action()
+  }
+  function refreshBooks() { setCatalogRevision((value) => value + 1) }
+
 
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null
 
@@ -36,9 +59,9 @@ function App() {
     let active = true
     fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
       .then((items) => { if (active) { setBooks(items); setApiError(null) } })
-      .catch(() => { if (active) setApiError('暂时无法连接服务器，当前显示本地演示数据') })
+      .catch(() => { if (active) setApiError('暂时无法读取书架，请检查本机服务后重试') })
     return () => { active = false }
-  }, [category, query, useApi])
+  }, [category, query, useApi, catalogRevision])
 
   const filteredBooks = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -56,22 +79,27 @@ function App() {
 
   const reserveBook = async () => {
     if (!selectedBook) return
+    if (useApi && !user) { setShowAccount(true); return }
     try {
       if (useApi) await createReservation(selectedBook.id, selectedBook.pickupPoint)
       setBooks((current) => current.map((book) => book.id === selectedBook.id ? { ...book, status: 'reserved' } : book))
       setSelectedBookId(null)
       notify('预约已提交，等待卖家确认')
-    } catch {
-      notify('预约失败，请检查服务器连接或书籍状态')
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : '预约失败，请重试')
     }
   }
 
   const publishBook = async (book: Book, imageFile?: File) => {
     const savedBook = useApi ? await createBook(book) : book
-    if (useApi && imageFile) await uploadBookImage(savedBook.id, imageFile)
+    let imageWarning = false
+    if (useApi && imageFile) {
+      try { await uploadBookImage(savedBook.id, imageFile) } catch { imageWarning = true }
+    }
     setBooks((current) => [savedBook, ...current])
     setShowPublish(false)
-    notify(useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
+    if (useApi) refreshBooks()
+    notify(imageWarning ? '书籍已发布，图片上传失败。请稍后补传封面' : useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
   }
 
   const submitReport = async (reason: string, description: string) => {
@@ -90,17 +118,17 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div><p className="eyebrow">珞珈书桥 · 校园图书循环共享</p><h1>一本书，连接更多珞珈人</h1></div>
-        <button className="icon-button" onClick={() => notify('消息中心将在后端接口接入后开放')} aria-label="查看消息">♧</button>
+        <button className="icon-button" onClick={() => needLogin(() => setShowReservations(true))} aria-label="查看预约进度">♧</button>
       </header>
 
       <main>
         <section className="hero-card">
-          <div className="hero-copy"><span className="hero-kicker">AI 辅助检索</span><h2>让闲置的书，继续被需要</h2><p>按书名、课程或出版社寻找合适的二手书，在线预约后在校内公共地点完成交接。</p></div>
+          <div className="hero-copy"><span className="hero-kicker">AI 辅助检索</span><h2>让闲置的书，继续被需要</h2><p>按书名、作者或出版社寻找合适的二手书，在线预约后在校内公共地点完成交接。</p></div>
           <div className="hero-orbit" aria-hidden="true"><span>书</span><i /><i /><i /></div>
         </section>
 
         <section className="search-section" aria-label="搜索图书">
-          <label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、课程、出版社..." />{query && <button className="clear-button" onClick={() => setQuery('')} aria-label="清除搜索">×</button>}</label>
+          <label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、作者、出版社..." />{query && <button className="clear-button" onClick={() => setQuery('')} aria-label="清除搜索">×</button>}</label>
           <div className="quick-tags" aria-label="快捷搜索">{['高等数学', 'C 语言', '考研资料'].map((tag) => <button key={tag} onClick={() => setQuery(tag)}>{tag}</button>)}</div>
         </section>
 
@@ -113,20 +141,21 @@ function App() {
         <section className="section-block">
           <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校内热门书籍</h2></div><button className="text-button" onClick={() => setCategory('all')}>查看全部 <span>→</span></button></div>
           <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{categoryLabels[item]}</button>)}</div>
-          {apiError && <p className="api-notice">{apiError}</p>}
+          {apiError && <p className="api-notice" role="alert">{apiError} <button onClick={refreshBooks}>重试</button></p>}
           <div className="book-grid">{filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
         </section>
       </main>
 
       <nav className="bottom-nav" aria-label="主导航">
-        {['首页', '发现', '发布', '消息', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? setShowPublish(true) : item === '我的' ? setShowReservations(true) : (setActiveTab(item), item !== '首页' && notify(`${item}模块正在完善中`))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
+        {['首页', '发现', '发布', '记录', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? needLogin(() => setShowPublish(true)) : item === '我的' ? setShowAccount(true) : item === '记录' ? needLogin(() => setShowReservations(true)) : (setActiveTab(item), item === '发现' && document.querySelector('.search-section')?.scrollIntoView({ behavior: 'smooth' }))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
       </nav>
 
-      {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => setReportBookId(selectedBook.id)} onRecognize={() => setAiBookId(selectedBook.id)} />}
+      {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => needLogin(() => setReportBookId(selectedBook.id))} onRecognize={() => setAiBookId(selectedBook.id)} />}
       {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
-      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} />}
+      {showAccount && <AccountDialog key={user?.id ?? 'anonymous'} user={user} useApi={useApi} onClose={() => setShowAccount(false)} onLogin={async (id) => { const current = await login(id); setSignedInId(current.id); setUser(current); refreshBooks() }} onLogout={async () => { await logout(); setSignedInId(''); setUser(null); setShowReservations(false) }} onProfile={setUser} onReservations={() => { setShowAccount(false); setShowReservations(true) }} onBooksChange={refreshBooks} />}
+      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} onBookStatusChange={(bookId, status) => setBooks((current) => current.map((book) => book.id === bookId ? { ...book, status } : book))} />}
       {reportBookId && <ReportDialog onClose={() => setReportBookId(null)} onSubmit={submitReport} />}
-      {aiBookId && <AIRecognitionDialog book={books.find((book) => book.id === aiBookId) ?? mockBooks[0]} useApi={useApi} onClose={() => setAiBookId(null)} />}
+      {aiBookId && <AIRecognitionDialog book={books.find((book) => book.id === aiBookId) ?? mockBooks[0]} useApi={useApi} onApplied={refreshBooks} onClose={() => setAiBookId(null)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   )

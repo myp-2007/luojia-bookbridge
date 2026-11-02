@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.naming import to_camel
+from app.models.reservation import ReservationStatus
 
 
 class APIModel(BaseModel):
@@ -17,9 +18,11 @@ class ReservationCreate(APIModel):
 
 class ReservationRead(APIModel):
     id: UUID
+    book_title: str
+    seller_id: str
     book_id: UUID
     buyer_id: str
-    status: str
+    status: ReservationStatus
     pickup_point: str | None
     proposed_time: datetime | None
     expires_at: datetime | None

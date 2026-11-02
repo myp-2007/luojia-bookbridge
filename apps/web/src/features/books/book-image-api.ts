@@ -12,6 +12,6 @@ export interface BookImage {
 
 export async function fetchBookImages(bookId: string): Promise<BookImage[]> {
   const images = await apiRequest<BookImage[]>(`/books/${bookId}/images`)
-  const apiOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, '')
+  const apiOrigin = new URL(API_BASE_URL, window.location.origin).origin
   return images.map((image) => ({ ...image, url: image.url.startsWith('/') ? `${apiOrigin}${image.url}` : image.url }))
 }

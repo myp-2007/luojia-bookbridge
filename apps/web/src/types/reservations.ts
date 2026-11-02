@@ -2,6 +2,8 @@ export type ReservationStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelle
 
 export interface Reservation {
   id: string
+  bookTitle?: string
+  sellerId?: string
   bookId: string
   buyerId: string
   status: ReservationStatus
