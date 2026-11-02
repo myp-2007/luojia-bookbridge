@@ -1,80 +1,131 @@
-import { expect, test } from '@playwright/test'
-import type { Reservation } from '../src/types/reservations'
+import { expect, test, type Page } from '@playwright/test'
 
-test('seller accepts and both parties confirm a handover on mobile', async ({ page }) => {
-  const reservation: Reservation = {
-    id: 'reservation-1', bookId: 'book-1', buyerId: 'demo-buyer', status: 'pending',
-    pickupPoint: '图书馆正门', proposedTime: null, expiresAt: null,
-    sellerConfirmedAt: null, buyerConfirmedAt: null, completedAt: null, createdAt: '2026-11-02T00:00:00Z',
-  }
-  const book = {
-    id: 'book-1', sellerId: 'demo-seller', title: '高等数学', author: '同济大学', publisher: '高等教育出版社',
-    edition: '第七版', condition: '九成新', price: 22, hasNotes: false, description: null,
-    category: 'textbook', status: 'reserved', pickupPoint: '图书馆正门', aiStatus: 'not_started', createdAt: reservation.createdAt,
-  }
-  const actions: string[] = []
-  await page.route('**/api/v1/**', async (route) => {
-    const path = new URL(route.request().url()).pathname
-    if (path.endsWith('/reservations/mine')) return route.fulfill({ json: [reservation] })
-    if (path.endsWith('/books/book-1')) return route.fulfill({ json: book })
-    if (path.endsWith('/books')) return route.fulfill({ json: { items: [book], page: 1, pageSize: 20, total: 1 } })
-    const action = path.split('/').at(-1)!
-    actions.push(action)
-    const actor = route.request().headers()['x-user-id']
-    if (action === 'confirm') {
-      expect(actor).toBe('demo-seller')
-      reservation.status = 'confirmed'
-    }
-    if (action === 'buyer-confirm') {
-      expect(actor).toBe('demo-buyer')
-      reservation.buyerConfirmedAt = '2026-11-02T01:00:00Z'
-    }
-    if (action === 'seller-confirm') {
-      expect(actor).toBe('demo-seller')
-      reservation.sellerConfirmedAt = '2026-11-02T01:01:00Z'
-    }
-    if (reservation.buyerConfirmedAt && reservation.sellerConfirmedAt) {
-      reservation.status = 'completed'
-      reservation.completedAt = reservation.sellerConfirmedAt
-    }
-    await route.fulfill({ json: reservation })
-  })
+async function loginUI(page: Page, name: string) {
   await page.goto('/')
   await page.getByRole('button', { name: /我的$/ }).click()
-  const panel = page.getByRole('dialog')
-  await expect(panel.getByRole('heading', { name: '高等数学' })).toBeVisible()
-  await expect(panel.getByRole('button', { name: '接受预约' })).toHaveCount(0)
-  await panel.getByRole('button', { name: '我卖出的' }).click()
-  await panel.getByRole('button', { name: '接受预约' }).click()
-  await expect(panel.getByText('等待线下交接', { exact: true })).toBeVisible()
-  await panel.getByRole('button', { name: '我买入的' }).click()
-  await panel.getByRole('button', { name: '确认已收到书' }).click()
-  expect(actions).toEqual(['confirm'])
-  await panel.getByRole('button', { name: '确认交接完成', exact: true }).click()
-  await expect(panel.getByText('买家已确认', { exact: true })).toBeVisible()
-  await panel.getByRole('button', { name: '我卖出的' }).click()
-  await panel.getByRole('button', { name: '确认已交出书' }).click()
-  await panel.getByRole('button', { name: '确认交接完成', exact: true }).click()
-  await expect(panel.getByText('交易已完成', { exact: true })).toBeVisible()
-  await expect(panel.getByRole('button', { name: '确认已交出书' })).toHaveCount(0)
-  await page.screenshot({ path: 'test-results/reservations-mobile.png' })
-  expect(actions).toEqual(['confirm', 'buyer-confirm', 'seller-confirm'])
+  await page.getByRole('button', { name: new RegExp(name) }).click()
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '关闭个人中心' }).click()
+}
+async function openTrades(page: Page) {
+  await page.getByRole('button', { name: /我的$/ }).click()
+  await page.getByRole('button', { name: '查看我的预约与交接 →' }).click()
+}
+
+test('real API: publish, reserve, accept and complete across two browser sessions', async ({ page, browser }) => {
+  const title = `浏览器实测教材-${Date.now()}`
+  await loginUI(page, '小珞')
+  await page.getByRole('button', { name: /发布$/ }).click()
+  const form = page.getByRole('dialog')
+  await form.getByLabel('书名', { exact: true }).fill(title)
+  await form.getByLabel('作者', { exact: true }).fill('演示作者')
+  await form.getByLabel('出版社', { exact: true }).fill('演示出版社')
+  await form.getByLabel('版本', { exact: true }).fill('第二版')
+  await form.getByLabel('价格（元）', { exact: true }).fill('12.34')
+  await form.getByLabel('交接地点', { exact: true }).fill('图书馆正门')
+  await form.getByRole('button', { name: '保存并发布' }).click()
+  await expect(form).toHaveCount(0)
+  const buyer = await browser.newContext({ viewport: { width: 390, height: 844 }, baseURL: 'http://127.0.0.1:5174' })
+  try {
+    const buyerPage = await buyer.newPage()
+    await loginUI(buyerPage, '小桥')
+    await buyerPage.getByRole('button', { name: `查看${title}详情` }).click()
+    await buyerPage.getByRole('button', { name: '预约交接', exact: true }).click()
+    await openTrades(buyerPage)
+    await expect(buyerPage.getByText('等待卖家接受', { exact: true })).toBeVisible()
+    await openTrades(page)
+    await page.getByRole('button', { name: '我卖出的' }).click()
+    const sellerRecord = page.getByRole('article').filter({ hasText: title })
+    await sellerRecord.getByRole('button', { name: '接受预约', exact: true }).click()
+    await expect(sellerRecord.getByText('等待线下交接', { exact: true })).toBeVisible()
+    await buyerPage.getByRole('button', { name: '刷新记录' }).click()
+    const buyerRecord = buyerPage.getByRole('article').filter({ hasText: title })
+    await buyerRecord.getByRole('button', { name: '确认已收到书' }).click()
+    await buyerRecord.getByRole('button', { name: '确认交接完成', exact: true }).click()
+    await expect(buyerRecord.getByText('买家已确认', { exact: true })).toBeVisible()
+    await sellerRecord.getByRole('button', { name: '确认已交出书' }).click()
+    await sellerRecord.getByRole('button', { name: '确认交接完成', exact: true }).click()
+    await expect(sellerRecord.getByText('交易已完成', { exact: true })).toBeVisible()
+    await page.screenshot({ path: 'test-results/local-demo-mobile.png' })
+    await buyerPage.getByRole('button', { name: '刷新记录' }).click()
+    await expect(buyerRecord.getByText('交易已完成', { exact: true })).toBeVisible()
+  } finally { await buyer.close() }
 })
 
-test('failed requests show an error and can be retried', async ({ page }) => {
-  let fail = true
-  await page.route('**/api/v1/**', async (route) => {
-    if (route.request().url().endsWith('/reservations/mine')) {
-      if (fail) return route.fulfill({ status: 503, json: { detail: '服务暂时不可用' } })
-      return route.fulfill({ json: [] })
-    }
-    return route.fulfill({ json: { items: [], page: 1, pageSize: 20, total: 0 } })
-  })
-  await page.goto('/')
+test('session survives refresh, profile is editable, failed trade reads can retry', async ({ page }) => {
+  await loginUI(page, '小书')
+  await page.reload()
   await page.getByRole('button', { name: /我的$/ }).click()
+  await expect(page.getByRole('heading', { name: '小书', exact: true })).toBeVisible()
+  await page.getByText('昵称与联系方式', { exact: true }).click()
+  await page.getByLabel('自愿提供的联系方式').fill('仅演示联系信息')
+  await page.getByRole('button', { name: '保存资料', exact: true }).click()
+  await expect.poll(async () => (await page.request.get('/api/v1/me')).json().then((data) => data.contact)).toBe('仅演示联系信息')
+  let fail = true
+  await page.route('**/api/v1/reservations/mine', async (route) => {
+    if (fail) return route.fulfill({ status: 503, json: { message: '服务暂时不可用' } })
+    return route.continue()
+  })
+  await page.getByRole('button', { name: '查看我的预约与交接 →' }).click()
   await expect(page.getByRole('alert')).toContainText('服务暂时不可用')
   fail = false
   await page.getByRole('button', { name: '重新读取' }).click()
   await expect(page.getByText('暂无买入记录')).toBeVisible()
 })
 
+test('admin resolves a real dispute and an ordinary user cannot access admin API', async ({ page }) => {
+  const api = page.request
+  await api.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  const book = await (await api.post('/api/v1/books', { data: { title: `争议教材-${Date.now()}`, priceCents: 1000 } })).json()
+  await api.post('/api/v1/auth/dev-login', { data: { userId: 'demo-buyer' } })
+  expect((await api.get('/api/v1/reports/admin')).status()).toBe(403)
+  const reservation = await (await api.post(`/api/v1/books/${book.id}/reservations`, { data: {} })).json()
+  await api.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  await api.post(`/api/v1/reservations/${reservation.id}/confirm`)
+  await api.post('/api/v1/auth/dev-login', { data: { userId: 'demo-buyer' } })
+  expect((await api.post(`/api/v1/reservations/${reservation.id}/dispute`)).status()).toBe(200)
+  await api.post('/api/v1/auth/logout')
+  await loginUI(page, '演示管理员')
+  await page.getByRole('button', { name: /我的$/ }).click()
+  await page.getByRole('button', { name: '处理举报', exact: true }).click()
+  const report = page.getByRole('article').filter({ hasText: '交接争议' }).first()
+  await report.getByLabel('核实说明').fill('双方同意取消，已核实')
+  await report.getByRole('combobox').selectOption('cancel')
+  await report.getByRole('button', { name: '保存处理结果' }).click()
+  await expect(report.getByText('已处理', { exact: true })).toBeVisible()
+  expect((await (await api.get(`/api/v1/books/${book.id}`)).json()).status).toBe('available')
+})
+
+test('my books supports editing, offline/publish and valid image uploads', async ({ page }) => {
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  const title = `可管理教材-${Date.now()}`
+  const book = await (await page.request.post('/api/v1/books', { data: { title, priceCents: 1500 } })).json()
+  await page.goto('/')
+  await page.getByRole('button', { name: /我的$/ }).click()
+  const record = page.getByRole('article').filter({ hasText: title })
+  await record.getByRole('button', { name: '编辑', exact: true }).click()
+  await page.getByLabel('价格（元）', { exact: true }).fill('9.99')
+  await page.getByLabel('交接地点', { exact: true }).fill('教学楼大厅')
+  await page.getByRole('button', { name: '保存修改', exact: true }).click()
+  await expect(record).toContainText('9.99')
+  await record.getByRole('button', { name: '下架', exact: true }).click()
+  await expect(record.getByRole('button', { name: '重新发布', exact: true })).toBeVisible()
+  await record.getByRole('button', { name: '重新发布', exact: true }).click()
+  await record.locator('input[type=file]').setInputFiles('src/assets/hero.png')
+  await expect.poll(async () => (await (await page.request.get(`/api/v1/books/${book.id}`)).json()).coverUrl).toBeTruthy()
+})
+
+test('AI candidates require manual confirmation before saving', async ({ page }) => {
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  const title = `识别教材-${Date.now()}`
+  await page.request.post('/api/v1/books', { data: { title, priceCents: 2000 } })
+  await page.goto('/')
+  await page.getByRole('button', { name: `查看${title}详情` }).click()
+  await page.getByRole('button', { name: '查看 AI 候选信息' }).click()
+  const panel = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: '识别候选信息' }) })
+  const save = panel.getByRole('button', { name: '确认并保存资料' })
+  await expect(save).toBeDisabled()
+  await panel.getByRole('checkbox').check()
+  await save.click()
+  await expect(panel).toHaveCount(0)
+})

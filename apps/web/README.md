@@ -1,36 +1,13 @@
-# Luojia BookBridge web frontend
+# Web
 
-This package is the mobile-first React + TypeScript + Vite frontend.
+React + TypeScript + Vite。默认连接相对 `/api/v1`，Vite代理到本机8000，完整本机演示由FastAPI同端口托管dist。使用当前登录用户的Cookie会话，买入/卖出面板属于同一个用户。离线预览可以显式设置VITE_USE_API=false。
 
-Ownership: frontend module.
-
-The current foundation includes:
-
-- responsive home page
-- search input with quick tags
-- textbook / reading / donation category tabs
-- mock book cards and empty search state
-- API client boundary at `src/lib/api-client.ts`
-- typed book model at `src/types/books.ts`
-
-Run locally:
-
-```bash
-npm install
-npm run dev
-```
-
-The API base URL is configured with `VITE_API_BASE_URL`. The page currently uses mock data so it can be developed before the backend is ready.
-
-## Reservation workbench
-
-Open “我的” to view purchases and sales. With `VITE_USE_API=true`, the panel uses the configured development buyer and seller identities and the existing reservation endpoints. Seller acceptance/rejection and both handover confirmations are available. With Mock mode, a clearly labelled sample reservation can be used to demonstrate the flow. Sample state resets when the panel closes.
-
-Run browser regression checks with the locally installed Microsoft Edge:
-
-```bash
+```powershell
 npm ci
+npm run dev
+npm run build
+npm run lint
 npm run test:e2e
 ```
 
-The tests start a separate Vite server on port 5174 and intercept API requests. Screenshots are written under the ignored `test-results` directory.
+浏览器测试使用本机Edge，启动独立FastAPI/临时SQLite实例和Vite，验证真实HTTP发布、预约、跨浏览器双确认、资料、错误重试、管理员处理、编辑上下架及图片上传。测试使用端口8001和5174，结果和截图在忽略的test-results目录。Windows测试启动命令依赖apps/api/.venv。完整多人演示见docs/LOCAL_DEMO.md。

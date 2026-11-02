@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchBook } from '../books/book-api'
-import { changeReservation, fetchMyReservations, reservationUserId } from './reservation-api'
+import { changeReservation, fetchContact, fetchMyReservations, reservationUserId } from './reservation-api'
 import type { ReservationAction, ReservationRole } from './reservation-api'
 import type { Reservation } from '../../types/reservations'
 import type { BookStatus } from '../../types/books'
@@ -42,6 +42,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
   const [error, setError] = useState<string | null>(null)
   const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [confirmationId, setConfirmationId] = useState<string | null>(null)
+  const [contactInfo, setContactInfo] = useState<Record<string, string>>({})
   const [reload, setReload] = useState(0)
   const busy = useRef(false)
 
@@ -52,8 +53,8 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
       const userId = reservationUserId(role)
       const filtered = records.filter((item) => role === 'buyer' ? item.buyerId === userId : item.buyerId !== userId)
       const enriched = await Promise.all(filtered.map(async (item) => {
-        const book = await fetchBook(item.bookId).catch(() => null)
-        return { ...item, bookTitle: book?.title ?? `书籍 ${item.bookId.slice(0, 8)}` }
+        const book = item.bookTitle ? null : await fetchBook(item.bookId).catch(() => null)
+        return { ...item, bookTitle: item.bookTitle ?? book?.title ?? `书籍 ${item.bookId.slice(0, 8)}` }
       }))
       if (active) setItems(enriched)
     }).catch((cause: unknown) => {
@@ -124,7 +125,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
         <span className="section-kicker">我的书桥</span>
         <h2 id="reservation-title">预约与交接</h2>
         <p className="trade-intro">从预约到收书，每一步都有记录。</p>
-        <p className="trade-demo-note">{useApi ? '当前使用买家、卖家两个测试身份进行联调。' : '示例演示 · 可切换双方完成交接，关闭面板后重置。'}</p>
+        <p className="trade-demo-note">{useApi ? '显示当前登录账号的买入和卖出记录。' : '示例演示 · 可切换双方完成交接，关闭面板后重置。'}</p>
         <div className="trade-tabs" aria-label="预约身份">
           <button aria-pressed={role === 'buyer'} disabled={submittingId !== null} onClick={() => selectRole('buyer')}>我买入的</button>
           <button aria-pressed={role === 'seller'} disabled={submittingId !== null} onClick={() => selectRole('seller')}>我卖出的</button>
@@ -145,9 +146,16 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
               {item.status === 'confirmed' && alreadyConfirmed && <p className="trade-help">你的交接已确认，等待另一方确认。</p>}
               <div className="trade-actions">
                 {role === 'seller' && item.status === 'pending' && <><button disabled={submittingId !== null} onClick={() => act(item, 'confirm')}>接受预约</button><button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'reject')}>拒绝预约</button></>}
-                {role === 'buyer' && active && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'cancel')}>取消预约</button>}
+                {role === 'buyer' && active && !item.buyerConfirmedAt && !item.sellerConfirmedAt && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'cancel')}>取消预约</button>}
                 {item.status === 'confirmed' && !alreadyConfirmed && <button disabled={submittingId !== null} onClick={() => setConfirmationId(item.id)}>确认{role === 'buyer' ? '已收到书' : '已交出书'}</button>}
+                {useApi && ['confirmed', 'completed', 'disputed'].includes(item.status) && <button className="trade-secondary" disabled={submittingId !== null} onClick={async () => {
+                  try { const data = await fetchContact(item.id); setContactInfo((current) => ({ ...current, [item.id]: data.contact || '对方尚未提供联系方式，请按公共交接点约定会面' })) }
+                  catch (cause) { setError(cause instanceof Error ? cause.message : '读取失败') }
+                }}>查看对方联系方式</button>}
+                {useApi && item.status === 'confirmed' && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'dispute')}>申请争议处理</button>}
               </div>
+              {contactInfo[item.id] && <p className="trade-help">{contactInfo[item.id]}</p>}
+              {item.status === 'disputed' && <p className="trade-help">已冻结交易并提交管理员核实，请在“我的反馈”查看处理结果。</p>}
               {confirmationId === item.id && <div className="trade-confirmation"><p>请确认已当面核对书籍、完成线下付款和交接。双方确认后，交易将结束。</p><button disabled={submittingId !== null} onClick={() => act(item, role === 'buyer' ? 'buyer-confirm' : 'seller-confirm')}>确认交接完成</button><button disabled={submittingId !== null} onClick={() => setConfirmationId(null)}>暂不确认</button></div>}
               {submittingId === item.id && <p role="status">正在保存，请稍候…</p>}
             </article>
