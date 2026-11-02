@@ -1,22 +1,43 @@
-from fastapi import Header, HTTPException, status
-
+from datetime import datetime, timezone
+from hashlib import sha256
+from fastapi import Cookie, Depends, Header, HTTPException
+from sqlalchemy.orm import Session
 from app.core.config import get_settings
+from app.db.session import get_db
+from app.models.user import User, UserSession
 
 
-def _dev_auth_enabled() -> bool:
+def demo_enabled() -> bool:
     settings = get_settings()
     return settings.allow_dev_auth and settings.environment in {'development', 'test'}
 
 
-def get_current_user_id(x_user_id: str | None = Header(default=None)) -> str:
-    if _dev_auth_enabled() and x_user_id:
-        return x_user_id
-    if _dev_auth_enabled():
-        return 'dev-user'
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='请先完成身份认证')
+def token_hash(token: str) -> str:
+    return sha256(token.encode()).hexdigest()
 
 
-def require_admin(x_role: str | None = Header(default=None)) -> str:
-    if _dev_auth_enabled() and x_role == 'admin':
-        return 'admin'
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='需要管理员权限')
+def get_current_user(
+    bookbridge_session: str | None = Cookie(default=None),
+    x_user_id: str | None = Header(default=None),
+    x_role: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    if bookbridge_session:
+        session = db.get(UserSession, token_hash(bookbridge_session))
+        if session and session.expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
+            user = db.get(User, session.user_id)
+            if user:
+                return user
+    if demo_enabled() and get_settings().allow_legacy_headers:
+        return User(id=x_user_id or 'dev-user', nickname='兼容测试用户', role='admin' if x_role == 'admin' else 'student')
+    raise HTTPException(401, '请先登录')
+
+
+def get_current_user_id(user: User = Depends(get_current_user)) -> str:
+    return user.id
+
+
+def require_admin(user: User = Depends(get_current_user)) -> str:
+    if user.role != 'admin':
+        raise HTTPException(403, '需要管理员权限')
+    return user.id
