@@ -22,7 +22,7 @@ class MockBookRecognitionProvider:
     """Deterministic provider used for local development and competition demos."""
 
     def recognize(self, book: Book) -> RecognitionResult:
-        warnings: list[str] = []
+        warnings: list[str] = ['模拟模式：以下内容来自已填写资料，尚未调用图片识别服务']
         if not book.publisher:
             warnings.append('未识别出版社，请发布者补充')
         if not book.edition:

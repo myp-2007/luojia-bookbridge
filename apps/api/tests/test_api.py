@@ -1,7 +1,9 @@
 import os
 
 os.environ['DATABASE_URL'] = 'sqlite:///./test_bookbridge.db'
+os.environ['AI_PROVIDER'] = 'mock'
 os.environ['ENVIRONMENT'] = 'development'
+os.environ['ALLOW_LEGACY_HEADERS'] = 'true'
 
 from fastapi.testclient import TestClient
 
@@ -89,16 +91,21 @@ def test_both_parties_confirm_handover_completes_transaction() -> None:
 
 
 def test_seller_can_upload_book_image() -> None:
+    from io import BytesIO
+    from PIL import Image
+    buffer = BytesIO()
+    Image.new('RGB', (8, 8), 'green').save(buffer, format='PNG')
+    png = buffer.getvalue()
     with TestClient(app) as client:
         created = client.post('/api/v1/books', json={'title': '数据结构', 'price': 21}, headers={'X-User-Id': 'seller-image'}).json()
         response = client.post(
             f"/api/v1/books/{created['id']}/images",
-            files={'file': ('cover.png', b'fake-png-content', 'image/png')},
+            files={'file': ('cover.png', png, 'image/png')},
             headers={'X-User-Id': 'seller-image'},
         )
         assert response.status_code == 201
         assert response.json()['contentType'] == 'image/png'
-        assert response.json()['sizeBytes'] == len(b'fake-png-content')
+        assert response.json()['sizeBytes'] == len(png)
         listed = client.get(f"/api/v1/books/{created['id']}/images")
         assert listed.status_code == 200
         assert len(listed.json()) == 1
@@ -117,7 +124,8 @@ def test_mock_ai_recognition_returns_structured_fields() -> None:
 
 def test_report_and_admin_resolution_flow() -> None:
     with TestClient(app) as client:
-        created = client.post('/api/v1/reports', json={'targetType': 'book', 'targetId': 'book-1', 'reason': '描述不符', 'description': '书籍版本与发布信息不一致'}, headers={'X-User-Id': 'reporter-1'})
+        target = client.post('/api/v1/books', json={'title': 'report target'}, headers={'X-User-Id': 'reporter-1'}).json()
+        created = client.post('/api/v1/reports', json={'targetType': 'book', 'targetId': target['id'], 'reason': '描述不符', 'description': '书籍版本与发布信息不一致'}, headers={'X-User-Id': 'reporter-1'})
         assert created.status_code == 201
         report_id = created.json()['id']
         denied = client.get('/api/v1/reports/admin', headers={'X-Role': 'student'})
@@ -136,7 +144,7 @@ def test_dev_headers_are_disabled_when_dev_auth_is_off() -> None:
             user_response = client.post('/api/v1/books', json={'title': '权限测试', 'price': 1}, headers={'X-User-Id': 'spoofed-user'})
             admin_response = client.get('/api/v1/reports/admin', headers={'X-Role': 'admin'})
         assert user_response.status_code == 401
-        assert admin_response.status_code == 403
+        assert admin_response.status_code == 401
     finally:
         settings.allow_dev_auth, settings.environment = previous_auth, previous_environment
 
@@ -151,3 +159,292 @@ def test_dev_headers_are_disabled_in_production_even_if_flag_is_set() -> None:
         assert response.status_code == 401
     finally:
         settings.allow_dev_auth, settings.environment = previous_auth, previous_environment
+
+import pytest
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+from app.db.session import SessionLocal
+from app.models.reservation import Reservation, ReservationStatus
+from app.models.user import UserSession, AuditLog
+from app.demo_seed import seed
+from sqlalchemy import select
+
+
+@pytest.fixture
+def session_client(monkeypatch):
+    monkeypatch.setattr(get_settings(), 'allow_legacy_headers', False)
+    seed()
+    with TestClient(app) as client:
+        yield client
+
+
+def demo_login(client, user='demo-buyer'):
+    result = client.post('/api/v1/auth/dev-login', json={'userId': user})
+    assert result.status_code == 200
+    assert 'HttpOnly' in result.headers['set-cookie']
+    return result.json()
+
+
+def make_trade(client):
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': str(uuid4()), 'priceCents': 1234}).json()
+    assert book['priceCents'] == 1234 and book['price'] == 12.34
+    demo_login(client)
+    reservation = client.post(f"/api/v1/books/{book['id']}/reservations", json={}).json()
+    return book, reservation
+
+
+def test_session_login_logout_and_header_spoofing(session_client):
+    client = session_client
+    assert client.get('/api/v1/me', headers={'X-User-Id': 'demo-admin', 'X-Role': 'admin'}).status_code == 401
+    assert client.post('/api/v1/auth/dev-login', json={'userId': 'unknown'}).status_code == 403
+    user = demo_login(client)
+    assert client.get('/api/v1/me').json()['id'] == user['id']
+    assert client.get('/api/v1/reports/admin', headers={'X-Role': 'admin'}).status_code == 403
+    cookie = client.cookies.get('bookbridge_session')
+    client.post('/api/v1/auth/logout')
+    assert client.get('/api/v1/me').status_code == 401
+    with TestClient(app) as other:
+        other.cookies.set('bookbridge_session', cookie)
+        assert other.get('/api/v1/me').status_code == 401
+
+
+def test_expired_session_cannot_access_me(session_client):
+    client = session_client
+    demo_login(client)
+    with SessionLocal() as db:
+        session = db.scalar(select(UserSession).where(UserSession.user_id == 'demo-buyer'))
+        session.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        db.commit()
+    assert client.get('/api/v1/me').status_code == 401
+
+
+def test_book_edit_offline_publish_permissions(session_client):
+    client = session_client
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': '可编辑书', 'price': 10}).json()
+    path = f"/api/v1/books/{book['id']}"
+    assert client.patch(path, json={'title': '修订版', 'priceCents': 999}).json()['priceCents'] == 999
+    assert client.post(path + '/offline').json()['status'] == 'offline'
+    assert client.post(path + '/publish').json()['status'] == 'available'
+    demo_login(client)
+    assert client.patch(path, json={'title': '越权'}).status_code == 403
+    assert client.post('/api/v1/books', json={'title': '   '}).status_code == 422
+
+
+def test_pending_expiry_releases_book(session_client):
+    client = session_client
+    book, reservation = make_trade(client)
+    with SessionLocal() as db:
+        from uuid import UUID
+        record = db.get(Reservation, UUID(reservation['id']))
+        record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+        db.commit()
+    items = client.get('/api/v1/reservations/mine').json()
+    assert next(r for r in items if r['id'] == reservation['id'])['status'] == 'expired'
+    assert client.get(f"/api/v1/books/{book['id']}").json()['status'] == 'available'
+
+
+def test_trade_contacts_dispute_and_admin_resolution(session_client):
+    client = session_client
+    book, reservation = make_trade(client)
+    path = f"/api/v1/reservations/{reservation['id']}"
+    assert client.get(path + '/contact').status_code == 403
+    demo_login(client, 'demo-seller')
+    client.patch('/api/v1/me', json={'nickname': '小珞', 'contact': '演示联系信息'})
+    assert client.post(path + '/confirm').status_code == 200
+    assert client.post(f"/api/v1/books/{book['id']}/offline").status_code == 409
+    demo_login(client)
+    assert client.get(path + '/contact').json()['contact'] == '演示联系信息'
+    assert client.post(path + '/buyer-confirm').json()['status'] == 'confirmed'
+    assert client.post(path + '/cancel').status_code == 409
+    assert client.post(path + '/dispute').json()['status'] == 'disputed'
+    report = client.post('/api/v1/reports', json={'targetType': 'reservation', 'targetId': reservation['id'], 'reason': '交接争议', 'description': '需要处理'}).json()
+    demo_login(client, 'demo-reader')
+    assert client.get(path + '/contact').status_code == 403
+    assert client.post(path + '/seller-confirm').status_code == 403
+    demo_login(client, 'demo-admin')
+    resolved = client.post(f"/api/v1/reports/admin/{report['id']}/resolve", json={'status': 'resolved', 'resolution': '核实后取消', 'outcome': 'cancel'})
+    assert resolved.status_code == 200
+    assert client.get(f"/api/v1/books/{book['id']}").json()['status'] == 'available'
+    assert client.get('/api/v1/admin/audit-logs').json()['items']
+
+
+def test_completed_confirmation_is_idempotent_and_private(session_client):
+    client = session_client
+    book, reservation = make_trade(client)
+    path = f"/api/v1/reservations/{reservation['id']}"
+    demo_login(client, 'demo-seller')
+    client.post(path + '/confirm')
+    client.post(path + '/seller-confirm')
+    demo_login(client)
+    completed = client.post(path + '/buyer-confirm').json()
+    assert completed['status'] == 'completed'
+    assert client.post(path + '/buyer-confirm').json()['completedAt'] == completed['completedAt']
+    demo_login(client, 'demo-reader')
+    assert client.post(path + '/buyer-confirm').status_code == 403
+    assert client.post(path + '/cancel').status_code == 403
+
+
+def test_fake_image_is_rejected(session_client):
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '图片检查'}).json()
+    response = client.post(f"/api/v1/books/{book['id']}/images", files={'file': ('fake.png', b'not an image', 'image/png')})
+    assert response.status_code == 400
+
+
+def test_concurrent_reservations_have_one_winner(session_client):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    client = session_client
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': str(uuid4())}).json()
+    with TestClient(app) as other:
+        demo_login(client, 'demo-buyer')
+        demo_login(other, 'demo-reader')
+        barrier = Barrier(2)
+        def reserve(actor):
+            barrier.wait(timeout=5)
+            return actor.post(f"/api/v1/books/{book['id']}/reservations", json={}).status_code
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(reserve, [client, other]))
+        assert sorted(results) == [201, 409]
+
+
+def test_concurrent_handover_does_not_lose_confirmation(session_client):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    client = session_client
+    book, reservation = make_trade(client)
+    path = f"/api/v1/reservations/{reservation['id']}"
+    with TestClient(app) as seller:
+        demo_login(seller, 'demo-seller')
+        seller.post(path + '/confirm')
+        barrier = Barrier(2)
+        def confirm(pair):
+            actor, action = pair
+            barrier.wait(timeout=5)
+            return actor.post(path + action).status_code
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(confirm, [(client, '/buyer-confirm'), (seller, '/seller-confirm')]))
+        assert results == [200, 200]
+    assert client.get(f"/api/v1/books/{book['id']}").json()['status'] == 'completed'
+
+
+def test_seed_is_repeatable_and_backup_can_restore(tmp_path, monkeypatch):
+    import sqlite3
+    from app.demo_backup import backup
+    seed()
+    from app.models.user import User
+    with SessionLocal() as db:
+        original = db.scalar(select(User).where(User.id == 'demo-buyer')).nickname
+    seed()
+    with SessionLocal() as db:
+        assert db.get(User, 'demo-buyer').nickname == original
+    # Dedicated database for the backup/restore check.
+    source_path = tmp_path / 'source.db'
+    with sqlite3.connect(source_path) as db:
+        db.execute('create table sample (id integer primary key, title text)')
+        db.execute("insert into sample values (1, 'preserved')")
+    monkeypatch.setattr(get_settings(), 'database_url', 'sqlite:///' + source_path.as_posix())
+    monkeypatch.setattr(get_settings(), 'storage_dir', str(tmp_path / 'images'))
+    monkeypatch.chdir(tmp_path)
+    directory = backup()
+    with sqlite3.connect(directory / 'demo.db') as restored:
+        assert restored.execute('select title from sample').fetchone()[0] == 'preserved'
+
+
+def test_cookie_write_rejects_cross_origin_request(session_client):
+    client = session_client
+    demo_login(client)
+    denied = client.post('/api/v1/books', json={'title': 'blocked'}, headers={'Origin': 'https://untrusted.invalid'})
+    assert denied.status_code == 403
+    assert denied.json()['code'] == 'INVALID_ORIGIN'
+
+
+def test_image_limit_and_public_book_cover(session_client):
+    from io import BytesIO
+    from PIL import Image
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '封面测试'}).json()
+    content = BytesIO()
+    Image.new('RGB', (8, 8), 'blue').save(content, format='PNG')
+    for _ in range(3):
+        assert client.post(f"/api/v1/books/{book['id']}/images", files={'file': ('cover.png', content.getvalue(), 'image/png')}).status_code == 201
+    assert client.post(f"/api/v1/books/{book['id']}/images", files={'file': ('cover.png', content.getvalue(), 'image/png')}).status_code == 400
+    assert client.get(f"/api/v1/books/{book['id']}").json()['coverUrl'].startswith('/storage/')
+
+
+def test_ai_task_persists_candidates_and_checks_owner(session_client):
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '任务测试'}).json()
+    task = client.post(f"/api/v1/books/{book['id']}/ai-tasks")
+    assert task.status_code == 202
+    path = f"/api/v1/books/{book['id']}/ai-tasks/{task.json()['id']}"
+    result = client.get(path).json()
+    assert result['status'] == 'succeeded'
+    assert result['result']['provider'] == 'mock'
+    assert result['result']['title']['value'] == '任务测试'
+    demo_login(client, 'demo-reader')
+    assert client.get(path).status_code == 403
+    assert client.post(f"/api/v1/books/{book['id']}/ai-tasks").status_code == 403
+
+
+def test_unconfigured_external_ai_fails_cleanly(session_client, monkeypatch):
+    client = session_client
+    demo_login(client)
+    monkeypatch.setattr(get_settings(), 'ai_provider', 'openai-compatible')
+    monkeypatch.setattr(get_settings(), 'ai_api_key', None)
+    book = client.post('/api/v1/books', json={'title': '手动兜底'}).json()
+    task = client.post(f"/api/v1/books/{book['id']}/ai-tasks").json()
+    result = client.get(f"/api/v1/books/{book['id']}/ai-tasks/{task['id']}").json()
+    assert result['status'] == 'failed'
+    assert 'AI_API_KEY' in result['error']
+
+
+def test_ai_task_stale_state_recovers(session_client):
+    from app.models.ai_task import AITask
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '恢复任务'}).json()
+    from uuid import UUID
+    with SessionLocal() as db:
+        task = AITask(book_id=UUID(book['id']), requested_by='demo-buyer', status='running', created_at=datetime.now(timezone.utc) - timedelta(minutes=5))
+        db.add(task)
+        db.commit()
+        task_id = task.id
+    result = client.get(f"/api/v1/books/{book['id']}/ai-tasks/{task_id}").json()
+    assert result['status'] == 'failed'
+    assert '超时' in result['error']
+
+
+def test_external_provider_adapter_validates_result_without_live_request(session_client, monkeypatch):
+    from io import BytesIO
+    from PIL import Image
+    from pydantic import SecretStr
+    import httpx
+    import app.services.ai_tasks as ai_service
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '原始资料'}).json()
+    content = BytesIO()
+    Image.new('RGB', (8, 8), 'white').save(content, format='PNG')
+    client.post(f"/api/v1/books/{book['id']}/images", files={'file': ('cover.png', content.getvalue(), 'image/png')})
+    monkeypatch.setattr(get_settings(), 'ai_provider', 'openai-compatible')
+    monkeypatch.setattr(get_settings(), 'ai_api_key', SecretStr('adapter-test-only'))
+    monkeypatch.setattr(get_settings(), 'ai_model', 'test-vision-model')
+    def fake_post(url, **kwargs):
+        import json
+        assert kwargs['json']['messages'][0]['content'][1]['type'] == 'image_url'
+        candidate = {name: {'value': '候选资料', 'confidence': 0.8} for name in ['title', 'author', 'publisher', 'edition']}
+        return httpx.Response(200, request=httpx.Request('POST', url), json={'choices': [{'message': {'content': json.dumps(candidate)}}]})
+    monkeypatch.setattr(ai_service.httpx, 'post', fake_post)
+    task = client.post(f"/api/v1/books/{book['id']}/ai-tasks").json()
+    result = client.get(f"/api/v1/books/{book['id']}/ai-tasks/{task['id']}").json()
+    assert result['status'] == 'succeeded'
+    assert result['result']['provider'] == 'openai-compatible'
+    assert result['result']['title']['value'] == '候选资料'
+    assert client.get(f"/api/v1/books/{book['id']}").json()['title'] == '原始资料'

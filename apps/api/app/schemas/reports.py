@@ -32,5 +32,6 @@ class ReportRead(BaseModel):
 
 
 class ReportResolve(BaseModel):
+    outcome: str | None = Field(default=None, pattern='^(complete|cancel)$')
     status: str = Field(pattern='^(resolved|rejected)$')
     resolution: str = Field(min_length=1, max_length=2000)

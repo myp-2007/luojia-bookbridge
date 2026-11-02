@@ -1,13 +1,17 @@
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
+from app.models.book_image import BookImage
 
 from app.models.book import Book, BookCategory, BookStatus
 from app.schemas.books import BookCreate, BookRead
 
 
 def to_book_read(book: Book) -> BookRead:
+    db = object_session(book)
+    cover = db.scalar(select(BookImage).where(BookImage.book_id == book.id).order_by(BookImage.created_at, BookImage.id).limit(1)) if db else None
+    cover_url = '/storage/' + cover.storage_path.replace(chr(92), '/') if cover else None
     return BookRead(
         id=book.id,
         seller_id=book.seller_id,
@@ -16,6 +20,7 @@ def to_book_read(book: Book) -> BookRead:
         publisher=book.publisher,
         edition=book.edition,
         price=book.price_cents / 100,
+        price_cents=book.price_cents,
         condition=book.condition,
         has_notes=book.has_notes,
         description=book.description,
@@ -23,11 +28,14 @@ def to_book_read(book: Book) -> BookRead:
         status=book.status.value,
         pickup_point=book.pickup_point,
         ai_status=book.ai_status,
+        cover_url=cover_url,
         created_at=book.created_at,
     )
 
 
 def list_books(db: Session, *, query: str | None, category: str | None, page: int, page_size: int) -> tuple[list[Book], int]:
+    from app.services.reservations import expire_pending
+    expire_pending(db)
     filters = [Book.status.in_([BookStatus.AVAILABLE, BookStatus.RESERVED])]
     if category:
         filters.append(Book.category == BookCategory(category))
@@ -51,7 +59,7 @@ def create_book(db: Session, payload: BookCreate, seller_id: str) -> Book:
         author=payload.author,
         publisher=payload.publisher,
         edition=payload.edition,
-        price_cents=round(payload.price * 100),
+        price_cents=payload.price_cents if payload.price_cents is not None else round(payload.price * 100),
         condition=payload.condition,
         has_notes=payload.has_notes,
         description=payload.description,
@@ -70,8 +78,10 @@ def get_book(db: Session, book_id: UUID) -> Book | None:
 
 
 def publish_book(db: Session, book: Book) -> Book:
-    if book.status != BookStatus.DRAFT:
+    if book.status == BookStatus.AVAILABLE:
         return book
+    if book.status not in {BookStatus.DRAFT, BookStatus.OFFLINE}:
+        raise ValueError('预约中或已完成的书籍不能重新发布')
     book.status = BookStatus.AVAILABLE
     db.commit()
     db.refresh(book)

@@ -1,7 +1,9 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
+from app.models.book import Book, BookStatus, BookCategory
 
 from app.core.auth import get_current_user_id
 from app.db.session import get_db
@@ -38,6 +40,47 @@ def create_new_book(payload: BookCreate, db: Session = Depends(get_db), seller_i
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
+@router.get('/mine', response_model=BookListResponse)
+def mine(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> BookListResponse:
+    statement = select(Book).where(Book.seller_id == user_id)
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    items = db.scalars(statement.order_by(Book.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    return BookListResponse(items=[to_book_read(book) for book in items], page=page, page_size=page_size, total=total)
+
+
+def editable_book(db: Session, book_id: UUID, actor_id: str) -> Book:
+    book = db.scalar(select(Book).where(Book.id == book_id).with_for_update().execution_options(populate_existing=True))
+    if not book:
+        raise HTTPException(404, '书籍不存在')
+    if book.seller_id != actor_id:
+        raise HTTPException(403, '只能管理自己的书籍')
+    if book.status not in {BookStatus.DRAFT, BookStatus.AVAILABLE, BookStatus.OFFLINE}:
+        raise HTTPException(409, '预约中或已完成的书籍不能修改')
+    return book
+
+
+@router.patch('/{book_id}', response_model=BookRead)
+def edit(book_id: UUID, payload: BookCreate, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> BookRead:
+    book = editable_book(db, book_id, user_id)
+    try:
+        book.category = BookCategory(payload.category)
+    except ValueError:
+        raise HTTPException(422, '不支持的书籍分类')
+    for name in ['title', 'author', 'publisher', 'edition', 'condition', 'has_notes', 'description', 'pickup_point']:
+        setattr(book, name, getattr(payload, name))
+    book.price_cents = payload.price_cents if payload.price_cents is not None else round(payload.price * 100)
+    db.commit()
+    return to_book_read(book)
+
+
+@router.post('/{book_id}/offline', response_model=BookRead)
+def offline(book_id: UUID, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> BookRead:
+    book = editable_book(db, book_id, user_id)
+    book.status = BookStatus.OFFLINE
+    db.commit()
+    return to_book_read(book)
+
+
 @router.get('/{book_id}', response_model=BookRead)
 def read_book(book_id: UUID, db: Session = Depends(get_db)) -> BookRead:
     book = get_book(db, book_id)
@@ -72,6 +115,7 @@ def publish_existing_book(book_id: UUID, db: Session = Depends(get_db), seller_i
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
     if book.seller_id != seller_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='只能发布自己的书籍')
+    book = editable_book(db, book_id, seller_id)
     return to_book_read(publish_book(db, book))
 
 
