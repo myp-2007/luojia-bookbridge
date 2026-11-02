@@ -30,6 +30,10 @@ interface BookApiRecord {
 
 interface BookListResponse { items: BookApiRecord[]; page: number; pageSize: number; total: number }
 
+export async function fetchBook(bookId: string): Promise<Book> {
+  return toBook(await apiRequest<BookApiRecord>(`/books/${bookId}`))
+}
+
 export async function fetchBooks(query?: string, category?: string): Promise<Book[]> {
   const params = new URLSearchParams()
   if (query) params.set('q', query)

@@ -124,7 +124,7 @@ function App() {
 
       {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => setReportBookId(selectedBook.id)} onRecognize={() => setAiBookId(selectedBook.id)} />}
       {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
-      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} />}
+      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} onBookStatusChange={(bookId, status) => setBooks((current) => current.map((book) => book.id === bookId ? { ...book, status } : book))} />}
       {reportBookId && <ReportDialog onClose={() => setReportBookId(null)} onSubmit={submitReport} />}
       {aiBookId && <AIRecognitionDialog book={books.find((book) => book.id === aiBookId) ?? mockBooks[0]} useApi={useApi} onClose={() => setAiBookId(null)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
