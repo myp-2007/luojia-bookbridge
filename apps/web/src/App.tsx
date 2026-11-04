@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { useLiveRefresh } from './lib/use-live-refresh'
 import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
@@ -28,6 +29,10 @@ function App() {
   const [reportBookId, setReportBookId] = useState<string | null>(null)
   const [aiBookId, setAiBookId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [catalogLoading, setCatalogLoading] = useState(import.meta.env.VITE_USE_API !== 'false')
+  const [lastSync, setLastSync] = useState<string | null>(null)
+  const [reserving, setReserving] = useState(false)
+  const reserveLock = useRef(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const useApi = import.meta.env.VITE_USE_API !== 'false'
   const [user, setUser] = useState<User | null>(null)
@@ -54,14 +59,23 @@ function App() {
 
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null
 
-  useEffect(() => {
-    if (!useApi) return
-    let active = true
-    fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
-      .then((items) => { if (active) { setBooks(items); setApiError(null) } })
-      .catch(() => { if (active) setApiError('暂时无法读取书架，请检查本机服务后重试') })
-    return () => { active = false }
-  }, [category, query, useApi, catalogRevision])
+  const syncCatalog = useCallback(async (isCurrent: () => boolean) => {
+    try {
+      const items = await fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
+      if (isCurrent()) {
+        setBooks(items)
+        setApiError(null)
+        setLastSync(new Date().toLocaleTimeString('zh-CN'))
+      }
+    } catch {
+      if (isCurrent()) setApiError('暂时无法连接主机，保留上次读取的内容，连接恢复后会自动重试。')
+    } finally {
+      if (isCurrent()) setCatalogLoading(false)
+    }
+  }, [category, query])
+
+  useLiveRefresh(syncCatalog, useApi && !reserving && !showPublish && !showAccount && !showReservations && !aiBookId && !reportBookId, catalogRevision)
+
 
   const filteredBooks = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -78,8 +92,10 @@ function App() {
   }
 
   const reserveBook = async () => {
-    if (!selectedBook) return
+    if (!selectedBook || reserveLock.current) return
     if (useApi && !user) { setShowAccount(true); return }
+    reserveLock.current = true
+    setReserving(true)
     try {
       if (useApi) await createReservation(selectedBook.id, selectedBook.pickupPoint)
       setBooks((current) => current.map((book) => book.id === selectedBook.id ? { ...book, status: 'reserved' } : book))
@@ -87,6 +103,10 @@ function App() {
       notify('预约已提交，等待卖家确认')
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : '预约失败，请重试')
+      refreshBooks()
+    } finally {
+      reserveLock.current = false
+      setReserving(false)
     }
   }
 
@@ -141,8 +161,9 @@ function App() {
         <section className="section-block">
           <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校内热门书籍</h2></div><button className="text-button" onClick={() => setCategory('all')}>查看全部 <span>→</span></button></div>
           <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{categoryLabels[item]}</button>)}</div>
+          {useApi && <div className="live-status"><span>{catalogLoading ? '正在读取共享书架…' : apiError ? '连接暂不可用' : '共享书架 · 每5秒同步'}{lastSync && ` · 上次更新 ${lastSync}`}</span><button disabled={catalogLoading} onClick={refreshBooks}>刷新书架</button></div>}
           {apiError && <p className="api-notice" role="alert">{apiError} <button onClick={refreshBooks}>重试</button></p>}
-          <div className="book-grid">{filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
+          <div className="book-grid">{catalogLoading ? <p role="status">正在读取书籍…</p> : filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : apiError ? null : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
         </section>
       </main>
 
@@ -150,7 +171,7 @@ function App() {
         {['首页', '发现', '发布', '记录', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? needLogin(() => setShowPublish(true)) : item === '我的' ? setShowAccount(true) : item === '记录' ? needLogin(() => setShowReservations(true)) : (setActiveTab(item), item === '发现' && document.querySelector('.search-section')?.scrollIntoView({ behavior: 'smooth' }))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
       </nav>
 
-      {selectedBook && <BookDetailDialog book={selectedBook} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => needLogin(() => setReportBookId(selectedBook.id))} onRecognize={() => setAiBookId(selectedBook.id)} />}
+      {selectedBook && <BookDetailDialog book={selectedBook} reserving={reserving} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => needLogin(() => setReportBookId(selectedBook.id))} onRecognize={() => setAiBookId(selectedBook.id)} />}
       {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
       {showAccount && <AccountDialog key={user?.id ?? 'anonymous'} user={user} useApi={useApi} onClose={() => setShowAccount(false)} onLogin={async (id) => { const current = await login(id); setSignedInId(current.id); setUser(current); refreshBooks() }} onLogout={async () => { await logout(); setSignedInId(''); setUser(null); setShowReservations(false) }} onProfile={setUser} onReservations={() => { setShowAccount(false); setShowReservations(true) }} onBooksChange={refreshBooks} />}
       {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} onBookStatusChange={(bookId, status) => setBooks((current) => current.map((book) => book.id === bookId ? { ...book, status } : book))} />}
