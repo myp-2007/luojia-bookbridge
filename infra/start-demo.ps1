@@ -42,7 +42,20 @@ try {
     & $pythonExe -m app.demo_seed
     if ($LASTEXITCODE -ne 0) { throw 'Demo seed failed' }
     Write-Host "Local demo ready at http://localhost:$Port"
-    Write-Host "Other devices can use http://YOUR-COMPUTER-LAN-IP:$Port on the same network."
+    $lanAddresses = @()
+    if (Get-Command Get-NetIPAddress -ErrorAction SilentlyContinue) {
+        $lanAddresses = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.AddressState -eq 'Preferred' -and $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } |
+            Select-Object -ExpandProperty IPAddress -Unique)
+    }
+    if ($lanAddresses.Count -gt 0) {
+        Write-Host 'LAN address candidates (choose the adapter on the same network as the other devices):'
+        foreach ($lanAddress in $lanAddresses) {
+            Write-Host ("  http://{0}:{1}" -f $lanAddress, $Port)
+        }
+    } else {
+        Write-Host 'No LAN IPv4 address detected. Check Wi-Fi or Ethernet, then retry.'
+    }
     Write-Host 'Choose different student accounts on each device. Ctrl+C stops the server.'
     & $pythonExe -m uvicorn app.main:app --host 0.0.0.0 --port $Port
 } finally { Pop-Location }

@@ -3,7 +3,7 @@ import { getSignedInId } from '../auth/auth-api'
 import type { Book } from '../../types/books'
 import { fetchBookImages, type BookImage } from './book-image-api'
 
-export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecognize }: { book: Book; onClose: () => void; onReserve: () => void; onReport: () => void; onRecognize: () => void }) {
+export function BookDetailDialog({ book, reserving = false, onClose, onReserve, onReport, onRecognize }: { book: Book; reserving?: boolean; onClose: () => void; onReserve: () => void; onReport: () => void; onRecognize: () => void }) {
   const ownBook = !!book.sellerId && book.sellerId === getSignedInId()
   const isAvailable = book.status === 'available' && !ownBook
   const statusLabels: Record<Book['status'], string> = { available: '在售', reserved: '已预约', completed: '已完成', offline: '已下架', draft: '草稿' }
@@ -32,7 +32,7 @@ export function BookDetailDialog({ book, onClose, onReserve, onReport, onRecogni
         </div>
         {book.description && <p className="dialog-intro">{book.description}</p>}
         <div className="detail-note"><strong>交易提示</strong><p>预约成功后，双方在校内公共地点当面核对书籍，再完成付款和交接。</p></div>
-        <button className="primary-action" disabled={!isAvailable} onClick={onReserve}>{ownBook ? '这是你发布的书籍' : isAvailable ? '预约交接' : '暂不可预约'}</button>
+        <button className="primary-action" disabled={!isAvailable || reserving} onClick={onReserve}>{reserving ? '正在提交预约…' : ownBook ? '这是你发布的书籍' : isAvailable ? '预约交接' : '暂不可预约'}</button>
         {(ownBook || import.meta.env.VITE_USE_API === 'false') && <button className="secondary-action" onClick={onRecognize}>查看 AI 候选信息</button>}
         <button className="secondary-action" onClick={onReport}>反馈问题</button>
       </section>

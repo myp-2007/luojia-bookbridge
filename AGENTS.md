@@ -8,11 +8,20 @@
 
 - 前端：React + TypeScript + Vite，目录为 `apps/web`。
 - 后端：FastAPI + SQLAlchemy + Alembic，目录为 `apps/api`。
-- 数据库：PostgreSQL。
-- 部署：Docker Compose + Caddy，目录为 `infra`。
+- 数据库：当前本机演示默认使用SQLite持久化文件，PostgreSQL保留为可选路径。
+- 当前运行：用户电脑上的FastAPI同端口提供前端网页、REST API和图片，启动脚本为 `infra/start-demo.ps1`。Docker Compose/Caddy属于可选后续路径。
 - API：REST，统一前缀为 `/api/v1`。
 - 首版只保证“认证、发布、搜索、预约、线下交接、双方确认完成”的教材交易闭环。
 - 不得在未讨论的情况下加入微服务、Kubernetes、Redis 集群、Elasticsearch、独立向量数据库或在线支付。
+
+## 当前交付方向（2026-11-04确认）
+
+- 用户电脑是临时主机，约五人通过可互访的局域网共享真实持久化数据。
+- 优先完成发布可见、预约状态同步、断线恢复、重启保留数据和本机备份。
+- 书架和打开的业务记录每5秒轮询同步，隐藏页面暂停，重新显示时读取最新数据。
+- 本机默认SQLite与本地图片目录，前后端同源，其他设备使用主机局域网IP和端口访问。
+- 当前验收不依赖租云服务器、购买域名、学校SSO或安装Docker。
+- 修改架构前以本段用户确认的运行方向为准，后续扩展须保留该本机路径。
 
 ## 1.1 项目负责人和仓库维护权限
 

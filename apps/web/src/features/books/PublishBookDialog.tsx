@@ -41,7 +41,7 @@ export function PublishBookDialog({ onClose, onSubmit, initialBook }: {
     setIsSubmitting(true); setError('')
     try {
       await onSubmit({
-        id: initialBook?.id ?? crypto.randomUUID(), sellerId: initialBook?.sellerId,
+        id: initialBook?.id ?? `local-${Date.now()}`, sellerId: initialBook?.sellerId,
         title: title.trim(), author: author.trim(), publisher: publisher.trim(), edition: edition.trim(),
         condition, price: Number(price), category, description: description.trim(),
         status: initialBook?.status ?? 'available', tags: notes ? ['有笔记'] : ['无笔记'],

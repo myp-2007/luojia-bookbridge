@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { demoAccounts, saveProfile, type User } from '../auth/auth-api'
 import { fetchMyBooks, setBookVisibility, updateBook, uploadBookImage } from '../books/book-api'
 import { PublishBookDialog } from '../books/PublishBookDialog'
 import { fetchReports, resolveReport, type ReportRecord } from '../reports/report-api'
 import type { Book } from '../../types/books'
 import './account.css'
+import { useLiveRefresh } from '../../lib/use-live-refresh'
 
 type Tab = 'books' | 'reports' | 'admin'
 type Props = {
@@ -21,38 +22,36 @@ export function AccountDialog(props: Props) {
   const [tab, setTab] = useState<Tab>('books')
   const [books, setBooks] = useState<Book[]>([])
   const [reports, setReports] = useState<ReportRecord[]>([])
+  const [syncError, setSyncError] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(useApi)
   const [revision, setRevision] = useState(0)
   const [editing, setEditing] = useState<Book | null>(null)
   const [nickname, setNickname] = useState(user?.nickname ?? '')
   const [contact, setContact] = useState(user?.contact ?? '')
 
-  useEffect(() => {
-    let active = true
-    async function load() {
-      try {
-        if (!useApi) return
-        if (!user) {
-          const result = await demoAccounts()
-          if (active) setAccounts(result)
-        } else if (tab === 'books') {
-          const result = await fetchMyBooks()
-          if (active) setBooks(result)
-        } else {
-          const result = await fetchReports(tab === 'admin')
-          if (active) setReports(result)
-        }
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : '读取失败')
-      } finally { if (active) setLoading(false) }
-    }
-    void load()
-    return () => { active = false }
-  }, [user, tab, revision, useApi])
+  const syncAccount = useCallback(async (isCurrent: () => boolean) => {
+    try {
+      if (!user) {
+        const result = await demoAccounts()
+        if (isCurrent()) setAccounts(result)
+      } else if (tab === 'books') {
+        const result = await fetchMyBooks()
+        if (isCurrent()) setBooks(result)
+      } else {
+        const result = await fetchReports(tab === 'admin')
+        if (isCurrent()) setReports(result)
+      }
+      if (isCurrent()) setSyncError('')
+    } catch (cause) {
+      if (isCurrent()) setSyncError(cause instanceof Error ? cause.message : '读取失败')
+    } finally { if (isCurrent()) setLoading(false) }
+  }, [user, tab])
+  useLiveRefresh(syncAccount, useApi && !busy && !editing, revision)
 
-  function reload() { setError(''); setLoading(true); setRevision((n) => n + 1) }
+
+  function reload() { setError(''); setSyncError(''); setLoading(true); setRevision((n) => n + 1) }
   async function perform(action: () => Promise<unknown>) {
     setBusy(true); setError('')
     try { await action(); reload() }
@@ -76,7 +75,7 @@ export function AccountDialog(props: Props) {
           {!loading && tab !== 'books' && <div className="account-list">{!reports.length && <p>暂无反馈记录。</p>}{reports.map((report) => <ReportItem key={report.id} report={report} admin={tab === 'admin'} disabled={busy} onResolve={(resolution, status, outcome) => perform(() => resolveReport(report.id, resolution, status, outcome))} />)}</div>}
         </>}
         {loading && <p role="status">正在读取…</p>}
-        {error && <div className="form-error" role="alert">{error}<button onClick={reload} disabled={busy}>重试</button></div>}
+        {(error || syncError) && <div className="form-error" role="alert">{error || syncError}<button onClick={reload} disabled={busy}>重试</button></div>}
       </section>
       {editing && <PublishBookDialog initialBook={editing} onClose={() => setEditing(null)} onSubmit={async (book) => { await updateBook(book); setEditing(null); props.onBooksChange(); reload() }} />}
     </div>
