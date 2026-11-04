@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { fetchBook } from '../books/book-api'
 import { changeReservation, fetchContact, fetchMyReservations, reservationUserId } from './reservation-api'
 import type { ReservationAction, ReservationRole } from './reservation-api'
 import type { Reservation } from '../../types/reservations'
 import type { BookStatus } from '../../types/books'
 import './reservations.css'
+import { useLiveRefresh } from '../../lib/use-live-refresh'
 
 type RecordItem = Reservation & { bookTitle: string }
 
@@ -39,6 +40,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
   const [role, setRole] = useState<ReservationRole>('buyer')
   const [items, setItems] = useState<RecordItem[]>(useApi ? [] : demoRecords)
   const [loading, setLoading] = useState(useApi)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submittingId, setSubmittingId] = useState<string | null>(null)
   const [confirmationId, setConfirmationId] = useState<string | null>(null)
@@ -46,27 +48,29 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
   const [reload, setReload] = useState(0)
   const busy = useRef(false)
 
-  useEffect(() => {
-    if (!useApi) return
-    let active = true
-    fetchMyReservations(role).then(async (records) => {
+  const syncReservations = useCallback(async (isCurrent: () => boolean) => {
+    try {
+      const records = await fetchMyReservations(role)
       const userId = reservationUserId(role)
       const filtered = records.filter((item) => role === 'buyer' ? item.buyerId === userId : item.buyerId !== userId)
       const enriched = await Promise.all(filtered.map(async (item) => {
         const book = item.bookTitle ? null : await fetchBook(item.bookId).catch(() => null)
         return { ...item, bookTitle: item.bookTitle ?? book?.title ?? `书籍 ${item.bookId.slice(0, 8)}` }
       }))
-      if (active) setItems(enriched)
-    }).catch((cause: unknown) => {
-      if (active) setError(cause instanceof Error ? cause.message : '暂时无法读取预约记录')
-    }).finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [useApi, role, reload])
+      if (isCurrent()) { setItems(enriched); setSyncError(null) }
+    } catch (cause) {
+      if (isCurrent()) setSyncError(cause instanceof Error ? cause.message : '暂时无法读取预约记录')
+    } finally {
+      if (isCurrent()) setLoading(false)
+    }
+  }, [role])
+  useLiveRefresh(syncReservations, useApi && submittingId === null, reload)
+
 
   function refresh() {
     setError(null)
+    setSyncError(null)
     setLoading(true)
-    setItems([])
     setConfirmationId(null)
     setReload((value) => value + 1)
   }
@@ -78,6 +82,8 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
     setError(null)
     if (useApi) {
       setItems([])
+      setContactInfo({})
+      setSyncError(null)
       setLoading(true)
     }
   }
@@ -125,15 +131,15 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
         <span className="section-kicker">我的书桥</span>
         <h2 id="reservation-title">预约与交接</h2>
         <p className="trade-intro">从预约到收书，每一步都有记录。</p>
-        <p className="trade-demo-note">{useApi ? '显示当前登录账号的买入和卖出记录。' : '示例演示 · 可切换双方完成交接，关闭面板后重置。'}</p>
+        <p className="trade-demo-note">{useApi ? '显示当前账号的记录，每5秒自动同步对方的操作。' : '示例演示 · 可切换双方完成交接，关闭面板后重置。'}</p>
         <div className="trade-tabs" aria-label="预约身份">
           <button aria-pressed={role === 'buyer'} disabled={submittingId !== null} onClick={() => selectRole('buyer')}>我买入的</button>
           <button aria-pressed={role === 'seller'} disabled={submittingId !== null} onClick={() => selectRole('seller')}>我卖出的</button>
         </div>
         <div className="trade-summary"><span>{loading ? '读取中' : `${pending} 笔进行中 · ${items.length} 笔记录`}</span>{useApi && <button disabled={loading || submittingId !== null} onClick={refresh}>刷新记录</button>}</div>
-        {error && <div className="form-error" role="alert">{error}{useApi && <button disabled={submittingId !== null} onClick={refresh}>重新读取</button>}</div>}
+        {(error || syncError) && <div className="form-error" role="alert">{error || syncError}{useApi && <button disabled={submittingId !== null} onClick={refresh}>重新读取</button>}</div>}
         {loading && <p role="status">正在读取预约记录…</p>}
-        {!loading && !error && !items.length && <div className="empty-state"><strong>暂无{role === 'buyer' ? '买入' : '卖出'}记录</strong><p>{role === 'buyer' ? '找到喜欢的书，发起你的第一笔预约。' : '发布书籍后，收到的预约会显示在这里。'}</p></div>}
+        {!loading && !error && !syncError && !items.length && <div className="empty-state"><strong>暂无{role === 'buyer' ? '买入' : '卖出'}记录</strong><p>{role === 'buyer' ? '找到喜欢的书，发起你的第一笔预约。' : '发布书籍后，收到的预约会显示在这里。'}</p></div>}
         <div className="trade-list">{!loading && items.map((item) => {
           const alreadyConfirmed = role === 'buyer' ? item.buyerConfirmedAt : item.sellerConfirmedAt
           const active = item.status === 'pending' || item.status === 'confirmed'
@@ -156,7 +162,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
               </div>
               {contactInfo[item.id] && <p className="trade-help">{contactInfo[item.id]}</p>}
               {item.status === 'disputed' && <p className="trade-help">已冻结交易并提交管理员核实，请在“我的反馈”查看处理结果。</p>}
-              {confirmationId === item.id && <div className="trade-confirmation"><p>请确认已当面核对书籍、完成线下付款和交接。双方确认后，交易将结束。</p><button disabled={submittingId !== null} onClick={() => act(item, role === 'buyer' ? 'buyer-confirm' : 'seller-confirm')}>确认交接完成</button><button disabled={submittingId !== null} onClick={() => setConfirmationId(null)}>暂不确认</button></div>}
+              {confirmationId === item.id && item.status === 'confirmed' && !alreadyConfirmed && <div className="trade-confirmation"><p>请确认已当面核对书籍、完成线下付款和交接。双方确认后，交易将结束。</p><button disabled={submittingId !== null} onClick={() => act(item, role === 'buyer' ? 'buyer-confirm' : 'seller-confirm')}>确认交接完成</button><button disabled={submittingId !== null} onClick={() => setConfirmationId(null)}>暂不确认</button></div>}
               {submittingId === item.id && <p role="status">正在保存，请稍候…</p>}
             </article>
           )
