@@ -205,3 +205,30 @@ test('hidden views pause polling and resync immediately when visible', async ({ 
   await page.evaluate(() => (window as unknown as { setTestHidden: (value: boolean) => void }).setTestHidden(false))
   await expect(page.getByRole('button', { name: `查看${title}详情` })).toBeVisible()
 })
+
+test('catalog combines price and notes filters with server pagination', async ({ page }) => {
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  for (let index = 1; index <= 13; index++) {
+    const response = await page.request.post('/api/v1/books', {
+      data: { title: `筛选测试教材 ${index}`, priceCents: index * 100, hasNotes: index % 2 === 0 },
+    })
+    expect(response.ok()).toBeTruthy()
+  }
+  await page.goto('/')
+  await page.getByPlaceholder('搜索书名、作者、出版社...').fill('筛选测试教材')
+  await page.getByText('筛选与排序', { exact: true }).click()
+  await page.getByLabel('排序方式').selectOption('price_asc')
+  await page.getByRole('button', { name: '应用筛选' }).click()
+  await expect(page.getByText('第 1 / 2 页 · 共 13 本', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看筛选测试教材 1详情', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.getByRole('button', { name: '查看筛选测试教材 13详情', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看筛选测试教材 1详情', exact: true })).toHaveCount(0)
+  await page.getByLabel('最高价（元）').fill('4')
+  await page.getByLabel('笔记情况').selectOption('yes')
+  await page.getByRole('button', { name: '应用筛选' }).click()
+  await expect(page.getByText('第 1 / 1 页 · 共 2 本', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看筛选测试教材 2详情', exact: true })).toBeVisible()
+  await page.getByText('筛选与排序', { exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: 'test-results/catalog-filters.png' })
+})

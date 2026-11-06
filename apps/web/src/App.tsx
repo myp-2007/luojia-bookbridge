@@ -3,8 +3,9 @@ import './App.css'
 import { useLiveRefresh } from './lib/use-live-refresh'
 import { BookCard } from './features/books/BookCard'
 import { BookDetailDialog } from './features/books/BookDetailDialog'
+import { BookFilterForm } from './features/books/BookFilterForm'
 import { PublishBookDialog } from './features/books/PublishBookDialog'
-import { createBook, createReservation, fetchBooks, uploadBookImage } from './features/books/book-api'
+import { createBook, createReservation, DEFAULT_BOOK_FILTERS, fetchBooks, uploadBookImage, type BookFilters } from './features/books/book-api'
 import { AIRecognitionDialog } from './features/ai/AIRecognitionDialog'
 import { MyReservationsDialog } from './features/reservations/MyReservationsDialog'
 import { ReportDialog } from './features/reports/ReportDialog'
@@ -16,11 +17,14 @@ import type { Book } from './types/books'
 
 type Category = 'all' | 'textbook' | 'reading' | 'donation'
 
-const categoryLabels: Record<Category, string> = { all: '全部', textbook: '教材交易', reading: '课外读物', donation: '公益捐赠' }
+const categoryLabels: Record<Category, string> = { all: '全部', textbook: '教材交易', reading: '课外读物', donation: '免费赠书' }
 
 function App() {
   const [books, setBooks] = useState<Book[]>(import.meta.env.VITE_USE_API === 'false' ? mockBooks : [])
   const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState<BookFilters>(DEFAULT_BOOK_FILTERS)
+  const [page, setPage] = useState(1)
+  const [catalogMeta, setCatalogMeta] = useState({ total: 0, pageSize: 12 })
   const [category, setCategory] = useState<Category>('all')
   const [activeTab, setActiveTab] = useState('首页')
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
@@ -61,9 +65,15 @@ function App() {
 
   const syncCatalog = useCallback(async (isCurrent: () => boolean) => {
     try {
-      const items = await fetchBooks(query.trim() || undefined, category === 'all' ? undefined : category)
+      const result = await fetchBooks(query.trim(), category, filters, page)
       if (isCurrent()) {
-        setBooks(items)
+        const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize))
+        if (page > lastPage) {
+          setPage(lastPage)
+          return
+        }
+        setBooks(result.items)
+        setCatalogMeta({ total: result.total, pageSize: result.pageSize })
         setApiError(null)
         setLastSync(new Date().toLocaleTimeString('zh-CN'))
       }
@@ -72,19 +82,20 @@ function App() {
     } finally {
       if (isCurrent()) setCatalogLoading(false)
     }
-  }, [category, query])
+  }, [category, query, filters, page])
 
   useLiveRefresh(syncCatalog, useApi && !reserving && !showPublish && !showAccount && !showReservations && !aiBookId && !reportBookId, catalogRevision)
 
 
   const filteredBooks = useMemo(() => {
+    if (useApi) return books
     const normalizedQuery = query.trim().toLowerCase()
     return books.filter((book) => {
       const matchesCategory = category === 'all' || book.category === category
       const matchesQuery = !normalizedQuery || [book.title, book.author, book.publisher, ...book.tags].join(' ').toLowerCase().includes(normalizedQuery)
       return matchesCategory && matchesQuery
     })
-  }, [books, category, query])
+  }, [books, category, query, useApi])
 
   const notify = (message: string) => {
     setToast(message)
@@ -116,9 +127,13 @@ function App() {
     if (useApi && imageFile) {
       try { await uploadBookImage(savedBook.id, imageFile) } catch { imageWarning = true }
     }
-    setBooks((current) => [savedBook, ...current])
     setShowPublish(false)
-    if (useApi) refreshBooks()
+    if (useApi) {
+      setPage(1)
+      refreshBooks()
+    } else {
+      setBooks((current) => [savedBook, ...current])
+    }
     notify(imageWarning ? '书籍已发布，图片上传失败。请稍后补传封面' : useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
   }
 
@@ -129,8 +144,24 @@ function App() {
     notify(useApi ? '反馈已提交，项目人员会尽快核实' : '反馈已记录到本地演示流程')
   }
 
+  function chooseCategory(next: Category) {
+    setCategory(next)
+    setPage(1)
+  }
+
+  function changeQuery(next: string) {
+    setQuery(next)
+    setPage(1)
+  }
+
+  function applyFilters(next: BookFilters) {
+    setFilters(next)
+    setPage(1)
+  }
+
+  const pageCount = Math.max(1, Math.ceil(catalogMeta.total / catalogMeta.pageSize))
   const selectFeature = (nextCategory: Category) => {
-    setCategory(nextCategory)
+    chooseCategory(nextCategory)
     document.querySelector('.section-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -148,22 +179,28 @@ function App() {
         </section>
 
         <section className="search-section" aria-label="搜索图书">
-          <label className="search-box"><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索书名、作者、出版社..." />{query && <button className="clear-button" onClick={() => setQuery('')} aria-label="清除搜索">×</button>}</label>
-          <div className="quick-tags" aria-label="快捷搜索">{['高等数学', 'C 语言', '考研资料'].map((tag) => <button key={tag} onClick={() => setQuery(tag)}>{tag}</button>)}</div>
+          <label className="search-box"><span aria-hidden="true">⌕</span><input value={query} maxLength={100} onChange={(event) => changeQuery(event.target.value)} placeholder="搜索书名、作者、出版社..." />{query && <button className="clear-button" onClick={() => changeQuery('')} aria-label="清除搜索">×</button>}</label>
+          <div className="quick-tags" aria-label="快捷搜索">{['高等数学', 'C 语言', '考研资料'].map((tag) => <button key={tag} onClick={() => changeQuery(tag)}>{tag}</button>)}</div>
         </section>
 
         <section className="feature-grid" aria-label="平台功能">
           <FeatureCard icon="▣" title="教材交易" description="专业教材，低价流转" tone="blue" onClick={() => selectFeature('textbook')} />
           <FeatureCard icon="☰" title="课外交流" description="拓展阅读，分享好书" tone="green" onClick={() => selectFeature('reading')} />
-          <FeatureCard icon="♡" title="公益捐赠" description="让书籍去更需要的地方" tone="gold" onClick={() => notify('公益捐赠模块将在交易闭环后接入')} />
+          <FeatureCard icon="♡" title="免费赠书" description="把闲置好书送给下一位同学" tone="gold" onClick={() => selectFeature('donation')} />
         </section>
 
         <section className="section-block">
-          <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校内热门书籍</h2></div><button className="text-button" onClick={() => setCategory('all')}>查看全部 <span>→</span></button></div>
-          <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{categoryLabels[item]}</button>)}</div>
+          <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校园共享书架</h2></div><button className="text-button" onClick={() => { chooseCategory('all'); changeQuery(''); applyFilters(DEFAULT_BOOK_FILTERS) }}>查看全部 <span>→</span></button></div>
+          <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => chooseCategory(item)}>{categoryLabels[item]}</button>)}</div>
+          {useApi && <details className="catalog-filters"><summary>筛选与排序</summary><BookFilterForm key={JSON.stringify(filters)} filters={filters} onApply={applyFilters} /></details>}
           {useApi && <div className="live-status"><span>{catalogLoading ? '正在读取共享书架…' : apiError ? '连接暂不可用' : '共享书架 · 每5秒同步'}{lastSync && ` · 上次更新 ${lastSync}`}</span><button disabled={catalogLoading} onClick={refreshBooks}>刷新书架</button></div>}
           {apiError && <p className="api-notice" role="alert">{apiError} <button onClick={refreshBooks}>重试</button></p>}
           <div className="book-grid">{catalogLoading ? <p role="status">正在读取书籍…</p> : filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : apiError ? null : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
+          {useApi && !catalogLoading && catalogMeta.total > 0 && <nav className="catalog-pagination" aria-label="书架分页">
+            <button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>上一页</button>
+            <span>第 {page} / {pageCount} 页 · 共 {catalogMeta.total} 本</span>
+            <button disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>下一页</button>
+          </nav>}
         </section>
       </main>
 

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, object_session
 from app.models.book_image import BookImage
 
@@ -33,18 +33,52 @@ def to_book_read(book: Book) -> BookRead:
     )
 
 
-def list_books(db: Session, *, query: str | None, category: str | None, page: int, page_size: int) -> tuple[list[Book], int]:
+def list_books(
+    db: Session, *, query: str | None, category: str | None, page: int, page_size: int,
+    min_price_cents: int | None = None, max_price_cents: int | None = None,
+    condition: str | None = None, has_notes: bool | None = None,
+    available_only: bool = False, sort: str = 'relevance',
+) -> tuple[list[Book], int]:
+    if min_price_cents is not None and max_price_cents is not None and min_price_cents > max_price_cents:
+        raise ValueError('最低价不能高于最高价')
+
     from app.services.reservations import expire_pending
     expire_pending(db)
-    filters = [Book.status.in_([BookStatus.AVAILABLE, BookStatus.RESERVED])]
+    statuses = [BookStatus.AVAILABLE] if available_only else [BookStatus.AVAILABLE, BookStatus.RESERVED]
+    filters = [Book.status.in_(statuses)]
     if category:
         filters.append(Book.category == BookCategory(category))
-    if query:
-        term = f'%{query.strip().lower()}%'
-        filters.append(or_(func.lower(Book.title).like(term), func.lower(Book.author).like(term), func.lower(Book.publisher).like(term)))
-    base_query = select(Book).where(*filters).order_by(Book.created_at.desc())
+    if min_price_cents is not None:
+        filters.append(Book.price_cents >= min_price_cents)
+    if max_price_cents is not None:
+        filters.append(Book.price_cents <= max_price_cents)
+    if condition:
+        filters.append(Book.condition == condition)
+    if has_notes is not None:
+        filters.append(Book.has_notes.is_(has_notes))
+
+    phrase = ' '.join((query or '').lower().split())
+    title = func.lower(Book.title)
+    searchable = [title, func.lower(Book.author), func.lower(Book.publisher), func.lower(Book.edition)]
+    for term in dict.fromkeys(phrase.split()):
+        filters.append(or_(*(field.contains(term, autoescape=True) for field in searchable)))
+
+    order = []
+    if sort == 'price_asc':
+        order.append(Book.price_cents.asc())
+    elif sort == 'price_desc':
+        order.append(Book.price_cents.desc())
+    elif sort == 'relevance' and phrase:
+        order.append(case(
+            (title == phrase, 0),
+            (title.startswith(phrase, autoescape=True), 1),
+            (title.contains(phrase, autoescape=True), 2),
+            else_=3,
+        ))
+    base_query = select(Book).where(*filters)
     total = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
-    books = list(db.scalars(base_query.offset((page - 1) * page_size).limit(page_size)).all())
+    results = base_query.order_by(*order, Book.created_at.desc(), Book.id.desc())
+    books = list(db.scalars(results.offset((page - 1) * page_size).limit(page_size)).all())
     return books, total
 
 

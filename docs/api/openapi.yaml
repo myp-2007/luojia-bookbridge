@@ -110,6 +110,25 @@ paths:
           minimum: 1
           default: 20
           title: Page Size
+      - name: min_price_cents
+        in: query
+        schema: {type: integer, minimum: 0, maximum: 10000000}
+      - name: max_price_cents
+        in: query
+        schema: {type: integer, minimum: 0, maximum: 10000000}
+      - name: condition
+        in: query
+        schema: {type: string, maxLength: 40}
+      - name: has_notes
+        in: query
+        schema: {type: boolean}
+      - name: available_only
+        in: query
+        schema: {type: boolean, default: false}
+      - name: sort
+        in: query
+        description: 默认有关键词按匹配度，无关键词按最新发布。价格相同时按发布时间和 ID 排序。
+        schema: {type: string, enum: [relevance, newest, price_asc, price_desc], default: relevance}
       responses:
         '200':
           description: Successful Response
@@ -117,6 +136,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookListResponse'
+              example: {items: [], page: 1, pageSize: 20, total: 0}
+        '400':
+          description: 价格区间无效或分类不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+              example: {code: HTTP_400, message: 最低价不能高于最高价, details: {}, requestId: example-request-id, detail: 最低价不能高于最高价}
         '422':
           description: Validation Error
           content:
