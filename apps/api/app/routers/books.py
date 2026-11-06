@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -23,10 +24,20 @@ def read_books(
     category: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    min_price_cents: int | None = Query(default=None, ge=0, le=10000000),
+    max_price_cents: int | None = Query(default=None, ge=0, le=10000000),
+    condition: str | None = Query(default=None, max_length=40),
+    has_notes: bool | None = None,
+    available_only: bool = False,
+    sort: Literal['relevance', 'newest', 'price_asc', 'price_desc'] = 'relevance',
     db: Session = Depends(get_db),
 ) -> BookListResponse:
     try:
-        books, total = list_books(db, query=q, category=category, page=page, page_size=page_size)
+        books, total = list_books(
+            db, query=q, category=category, page=page, page_size=page_size,
+            min_price_cents=min_price_cents, max_price_cents=max_price_cents,
+            condition=condition, has_notes=has_notes, available_only=available_only, sort=sort,
+        )
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return BookListResponse(items=[to_book_read(book) for book in books], page=page, page_size=page_size, total=total)
