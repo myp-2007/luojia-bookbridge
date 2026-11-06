@@ -28,3 +28,8 @@ AI目前仍为模拟候选，明确标注回显用户已有数据，不宣称读
 BookRead额外返回coverUrl（相对/storage路径或null），列表和详情可直接显示首张封面。图片类型按内容与MIME共同校验，每本最多三张。
 
 AI任务新增 POST /books/{bookId}/ai-tasks（202，发布者权限）、GET /books/{bookId}/ai-tasks/{taskId}（任务创建者权限），返回id/bookId/status/result/error/createdAt/finishedAt。result为title/author/publisher/edition的value/confidence字段、warnings数组和provider。重复提交会复用尚在运行的任务，查询时清理90秒超时任务。失败示例为status=failed，error包含可公开提示，不回传模型原始异常或Key。用户确认后通过已有PATCH /books/{id}保存候选。新增迁移f7c924a6de10创建ai_tasks。
+
+
+## 书架筛选和排序
+
+`GET /api/v1/books?q=高等数学&max_price_cents=3000&has_notes=true&available_only=true&sort=price_asc&page=1&page_size=12` 为公开查询。新增可选条件 `min_price_cents`、`max_price_cents`、`condition`、`has_notes`、`available_only` 和 `sort`。价格以整数分表示。默认 `relevance` 有关键词时按匹配度，无关键词时按最新发布。排序也可选 `newest`、`price_asc`、`price_desc`。成功返回 `items/page/pageSize/total`，价格倒置返回400，参数格式错误返回422。无需迁移。

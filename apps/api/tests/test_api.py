@@ -421,7 +421,11 @@ def test_ai_task_stale_state_recovers(session_client):
     assert '超时' in result['error']
 
 
-def test_external_provider_adapter_validates_result_without_live_request(session_client, monkeypatch):
+@pytest.mark.parametrize(('base_url', 'provider'), [
+    ('https://vision.example/v1', 'openai-compatible'),
+    ('https://api.deepseek.com', 'deepseek'),
+])
+def test_external_provider_adapter_validates_result_without_live_request(session_client, monkeypatch, base_url, provider):
     from io import BytesIO
     from PIL import Image
     from pydantic import SecretStr
@@ -436,15 +440,49 @@ def test_external_provider_adapter_validates_result_without_live_request(session
     monkeypatch.setattr(get_settings(), 'ai_provider', 'openai-compatible')
     monkeypatch.setattr(get_settings(), 'ai_api_key', SecretStr('adapter-test-only'))
     monkeypatch.setattr(get_settings(), 'ai_model', 'test-vision-model')
+    monkeypatch.setattr(get_settings(), 'ai_base_url', base_url)
     def fake_post(url, **kwargs):
         import json
         assert kwargs['json']['messages'][0]['content'][1]['type'] == 'image_url'
+        if provider == 'deepseek':
+            assert kwargs['json']['thinking'] == {'type': 'disabled'}
+        else:
+            assert 'thinking' not in kwargs['json']
         candidate = {name: {'value': '候选资料', 'confidence': 0.8} for name in ['title', 'author', 'publisher', 'edition']}
         return httpx.Response(200, request=httpx.Request('POST', url), json={'choices': [{'message': {'content': json.dumps(candidate)}}]})
     monkeypatch.setattr(ai_service.httpx, 'post', fake_post)
     task = client.post(f"/api/v1/books/{book['id']}/ai-tasks").json()
     result = client.get(f"/api/v1/books/{book['id']}/ai-tasks/{task['id']}").json()
     assert result['status'] == 'succeeded'
-    assert result['result']['provider'] == 'openai-compatible'
+    assert result['result']['provider'] == provider
     assert result['result']['title']['value'] == '候选资料'
     assert client.get(f"/api/v1/books/{book['id']}").json()['title'] == '原始资料'
+def test_catalog_relevance_filters_and_pagination():
+    with TestClient(app) as client:
+        seller = {'X-User-Id': 'catalog-seller'}
+        samples = [
+            ('试验代数', '林', 2000, True, '9成新'),
+            ('试验代数习题', '林', 900, True, '9成新'),
+            ('另一册', '试验代数 林', 600, False, '全新'),
+        ]
+        ids = [
+            client.post('/api/v1/books', json={
+                'title': title, 'author': author, 'priceCents': price,
+                'hasNotes': notes, 'condition': condition,
+            }, headers=seller).json()['id']
+            for title, author, price, notes, condition in samples
+        ]
+        result = client.get('/api/v1/books', params={'q': '试验代数'}).json()
+        assert [book['id'] for book in result['items']] == ids
+        params = {'q': '试验代数 林', 'sort': 'price_asc', 'page_size': 1}
+        first = client.get('/api/v1/books', params=params).json()
+        second = client.get('/api/v1/books', params={**params, 'page': 2}).json()
+        assert first['total'] == second['total'] == 3
+        assert first['items'][0]['id'] == ids[2]
+        assert second['items'][0]['id'] == ids[1]
+        combined = {'q': '试验代数', 'min_price_cents': 800, 'max_price_cents': 1000, 'condition': '9成新', 'has_notes': True}
+        assert [book['id'] for book in client.get('/api/v1/books', params=combined).json()['items']] == [ids[1]]
+        client.post(f'/api/v1/books/{ids[1]}/reservations', json={}, headers={'X-User-Id': 'catalog-buyer'})
+        assert client.get('/api/v1/books', params={**combined, 'available_only': True}).json()['total'] == 0
+        assert client.get('/api/v1/books', params={'min_price_cents': 1000, 'max_price_cents': 500}).status_code == 400
+        assert client.get('/api/v1/books', params={'q': '%_'}).json()['total'] == 0

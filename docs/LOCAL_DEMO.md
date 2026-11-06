@@ -51,11 +51,23 @@
 
 ## AI服务接入
 
-本机默认 `AI_PROVIDER=mock`，模拟候选会明确标注回显资料。任务保存在ai_tasks，状态为queued/running/succeeded/failed，运行中任务会复用，90秒未完成的任务在查询时标记失败，允许手动重试。服务运行在FastAPI后台任务中，适用于小规模演示，进程停止后由超时恢复处理。
+新克隆的项目默认 `AI_PROVIDER=mock`，模拟候选会明确标注回显资料。任务保存在ai_tasks，状态为queued/running/succeeded/failed，运行中任务会复用，90秒未完成的任务在查询时标记失败，允许手动重试。服务运行在FastAPI后台任务中，适用于小规模演示，进程停止后由超时恢复处理。
 
 已有兼容 `/chat/completions` 的视觉模型适配器。服务须支持图片data URL与JSON对象输出。设置 `AI_PROVIDER=openai-compatible`、`AI_BASE_URL`（包含版本前缀，如服务商提供的/v1）、`AI_MODEL` 和 `AI_API_KEY` 后重启。示例字段在apps/api/.env.example中，Key只保存在本机环境或被忽略的.env文件。启动脚本不覆盖这些AI配置。
 
-发布时先上传封面，再打开自己书籍的“查看AI候选信息”。识别成功后人工对照实物，勾选确认再保存。模拟结果会标注为模拟，真实模型返回的置信度同样需要人工核对。结构化不合法、服务失败或超时会展示错误，并保留手动编辑入口。当前已测试模拟任务和模拟HTTP适配器，真实模型请求和准确率尚未验收。
+发布时先上传封面，再打开自己书籍的“查看AI候选信息”。识别成功后人工对照实物，勾选确认再保存。模拟结果会标注为模拟，真实模型返回的置信度同样需要人工核对。结构化不合法、服务失败或超时会展示错误，并保留手动编辑入口。已用合成教材封面完成 DeepSeek Flash 的官方接口和项目异步识别任务验证，真实拍摄的教材照片准确率仍需采样评估。
+
+DeepSeek 配置保存在本机 `apps/api/.env`。该文件被 Git 忽略，请在其中设置下列字段并重启后端。Key 原文只保留在该本机文件。
+
+```dotenv
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=https://api.deepseek.com
+AI_MODEL=deepseek-flash
+AI_API_KEY=<本机填写>
+```
+
+模型命名和图片格式见 [DeepSeek 官方视觉指南](https://api-docs.deepseek.com/guides/vision/)。
+
 
 
 ## 自动共享与连接提示

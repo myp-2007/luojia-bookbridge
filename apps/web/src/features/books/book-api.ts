@@ -36,12 +36,31 @@ export async function fetchBook(bookId: string): Promise<Book> {
   return toBook(await apiRequest<BookApiRecord>(`/books/${bookId}`))
 }
 
-export async function fetchBooks(query?: string, category?: string): Promise<Book[]> {
+export type BookSort = 'relevance' | 'newest' | 'price_asc' | 'price_desc'
+export interface BookFilters {
+  minPriceCents?: number
+  maxPriceCents?: number
+  condition?: string
+  hasNotes?: boolean
+  availableOnly: boolean
+  sort: BookSort
+}
+export const DEFAULT_BOOK_FILTERS: BookFilters = { availableOnly: false, sort: 'relevance' }
+
+export async function fetchBooks(query: string, category: string, filters: BookFilters, page: number) {
   const params = new URLSearchParams()
   if (query) params.set('q', query)
-  if (category) params.set('category', category)
-  const response = await apiRequest<BookListResponse>(`/books${params.toString() ? `?${params.toString()}` : ''}`)
-  return response.items.map(toBook)
+  if (category !== 'all') params.set('category', category)
+  if (filters.minPriceCents !== undefined) params.set('min_price_cents', String(filters.minPriceCents))
+  if (filters.maxPriceCents !== undefined) params.set('max_price_cents', String(filters.maxPriceCents))
+  if (filters.condition) params.set('condition', filters.condition)
+  if (filters.hasNotes !== undefined) params.set('has_notes', String(filters.hasNotes))
+  if (filters.availableOnly) params.set('available_only', 'true')
+  params.set('sort', filters.sort)
+  params.set('page', String(page))
+  params.set('page_size', '12')
+  const response = await apiRequest<BookListResponse>(`/books?${params}`)
+  return { ...response, items: response.items.map(toBook) }
 }
 
 export async function createBook(book: Book): Promise<Book> {
