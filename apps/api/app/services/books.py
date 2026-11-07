@@ -1,4 +1,5 @@
 from uuid import UUID
+from fastapi import HTTPException
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, object_session
@@ -10,7 +11,7 @@ from app.schemas.books import BookCreate, BookRead
 
 def to_book_read(book: Book) -> BookRead:
     db = object_session(book)
-    cover = db.scalar(select(BookImage).where(BookImage.book_id == book.id).order_by(BookImage.created_at, BookImage.id).limit(1)) if db else None
+    cover = db.scalar(select(BookImage).where(BookImage.book_id == book.id).order_by(BookImage.sort_order, BookImage.created_at, BookImage.id).limit(1)) if db else None
     cover_url = '/storage/' + cover.storage_path.replace(chr(92), '/') if cover else None
     return BookRead(
         id=book.id,
@@ -29,6 +30,8 @@ def to_book_read(book: Book) -> BookRead:
         pickup_point=book.pickup_point,
         ai_status=book.ai_status,
         cover_url=cover_url,
+        is_suspended=book.is_suspended,
+        moderation_reason=book.moderation_reason,
         created_at=book.created_at,
     )
 
@@ -45,7 +48,7 @@ def list_books(
     from app.services.reservations import expire_pending
     expire_pending(db)
     statuses = [BookStatus.AVAILABLE] if available_only else [BookStatus.AVAILABLE, BookStatus.RESERVED]
-    filters = [Book.status.in_(statuses)]
+    filters = [Book.status.in_(statuses), Book.is_suspended.is_(False)]
     if category:
         filters.append(Book.category == BookCategory(category))
     if min_price_cents is not None:
@@ -112,6 +115,8 @@ def get_book(db: Session, book_id: UUID) -> Book | None:
 
 
 def publish_book(db: Session, book: Book) -> Book:
+    if book.is_suspended:
+        raise ValueError('书籍受管理限制，请联系管理员核实')
     if book.status == BookStatus.AVAILABLE:
         return book
     if book.status not in {BookStatus.DRAFT, BookStatus.OFFLINE}:
@@ -119,4 +124,17 @@ def publish_book(db: Session, book: Book) -> Book:
     book.status = BookStatus.AVAILABLE
     db.commit()
     db.refresh(book)
+    return book
+
+
+def editable_book(db: Session, book_id: UUID, actor_id: str) -> Book:
+    book = db.scalar(select(Book).where(Book.id == book_id).with_for_update().execution_options(populate_existing=True))
+    if not book:
+        raise HTTPException(404, '书籍不存在')
+    if book.seller_id != actor_id:
+        raise HTTPException(403, '只能管理自己的书籍')
+    if book.is_suspended:
+        raise HTTPException(409, '书籍受管理限制，请联系管理员核实')
+    if book.status not in {BookStatus.DRAFT, BookStatus.AVAILABLE, BookStatus.OFFLINE}:
+        raise HTTPException(409, '预约中或已完成的书籍不能修改')
     return book

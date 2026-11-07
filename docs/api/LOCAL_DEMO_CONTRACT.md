@@ -33,3 +33,29 @@ AI任务新增 POST /books/{bookId}/ai-tasks（202，发布者权限）、GET /b
 ## 书架筛选和排序
 
 `GET /api/v1/books?q=高等数学&max_price_cents=3000&has_notes=true&available_only=true&sort=price_asc&page=1&page_size=12` 为公开查询。新增可选条件 `min_price_cents`、`max_price_cents`、`condition`、`has_notes`、`available_only` 和 `sort`。价格以整数分表示。默认 `relevance` 有关键词时按匹配度，无关键词时按最新发布。排序也可选 `newest`、`price_asc`、`price_desc`。成功返回 `items/page/pageSize/total`，价格倒置返回400，参数格式错误返回422。无需迁移。
+
+## 图片管理与书籍审核（2026-11-08）
+
+以下均以 `/api/v1` 为前缀。先定合同，再实现前后端；新增迁移 `a82d61b904e3`，仅增加字段，不删除历史数据。
+
+| 方法 | 路径 | 权限与请求 | 成功响应 |
+| --- | --- | --- | --- |
+| DELETE | /books/{book_id}/images/{image_id} | 发布者，可编辑状态，非管理限制中；无请求体 | 204，无响应体；删除封面后下一张成为封面 |
+| POST | /books/{book_id}/images/{image_id}/cover | 同上；无请求体 | 200，按封面在前排列的 BookImageRead 数组 |
+| GET | /admin/books | 管理员；q（书名/作者/发布者，最长100），suspended（可选布尔），page/page_size | BookListResponse，含所有状态，稳定按最新与ID排序 |
+| POST | /admin/books/{book_id}/moderation | 管理员；`{suspended: boolean, reason: string}`，说明1至500字且不能全空格 | BookRead；限制/解除均写审计日志 |
+| GET | /admin/audit-logs | 管理员；page/page_size（默认20，最多100） | items/page/pageSize/total，按时间与ID倒序 |
+
+BookRead 增加 `isSuspended: boolean` 和 `moderationReason: string | null`。管理员限制后，书籍从公开搜索隐藏，禁止重新发布、编辑、图片增删和新预约；详情保留限制提示以便已有交易核实。可编辑书籍转为offline；reserved/completed原状态和历史保留，既有交易仍可继续交接或争议。受限预约被取消、拒绝、到期或管理员取消争议时，书籍回offline，避免自动恢复在售。解除限制后不自动重新发布，卖家自行确认后上架；有进行中交易的状态仍保留。reason不含私密信息，只填写可向发布者展示的处理原因。
+
+BookImage增加内部sort_order整数字段，旧图默认0，按sort_order/created_at/id稳定排序。上传顺序追加；设封面只改变排序；删除图片先提交数据库再清理本机文件（失败记服务器日志，可能残留孤立文件）。图片编辑与AI任务创建使用同一书籍锁；90秒内queued/running任务期间拒绝删除/更换封面，避免模型读取期间删除源文件，过期任务不阻塞操作。
+
+成功示例：`POST /admin/books/{id}/moderation {"suspended":true,"reason":"图片与书籍描述不符，核实后可解除"}` 返回 `{"id":"...","status":"offline","isSuspended":true,"moderationReason":"图片与书籍描述不符，核实后可解除", ...}`。`POST /books/{id}/images/{imageId}/cover` 返回 `[{"id":"imageId","bookId":"...","url":"/storage/...", ...}]`。
+
+失败示例：未登录401，普通同学访问管理接口403，跨书籍图片ID返回404，预约中修改图片/受限书籍编辑/AI任务未结束返回409：`{"code":"HTTP_409","message":"识别任务进行中，请稍后管理图片","details":{},"requestId":"...","detail":"识别任务进行中，请稍后管理图片"}`。重复删除返回404；重复限制为幂等状态设置，但仍记录提交的处理说明。请求完成后客户端重新读取列表，不在失败时假定操作成功。
+
+免费赠书校验：创建或完整编辑时category=donation要求有效priceCents为0（优先于兼容price），否则422。前端选择免费赠书时自动将金额设为0；后续仍复用预约、线下交接与双方确认状态机。上传图片也使用同一AI活跃任务检查，冲突返回409。
+
+AI新建任务仅在草稿/在售/下架且非管理限制时允许，预约中或完成状态返回409，防止生成无法保存的候选；界面对应隐藏不可编辑状态的识别按钮。
+
+时间统一按UTC存储和带时区的ISO 8601输出（Z或+00:00），浏览器再按本地时区展示。proposedTime输入带偏移时先转换UTC，兼容无偏移的旧请求按UTC解释。SQLite已有服务端时间按UTC补齐时区，无需迁移。旧版本若曾传入非UTC偏移并保存的proposedTime已丢失偏移，无法自动推断原时区；当前本机旧库没有预约记录。

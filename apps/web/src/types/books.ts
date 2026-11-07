@@ -6,6 +6,8 @@ export interface Book {
   sellerId?: string
   coverUrl?: string
   description?: string
+  isSuspended?: boolean
+  moderationReason?: string | null
   title: string
   author: string
   publisher: string
