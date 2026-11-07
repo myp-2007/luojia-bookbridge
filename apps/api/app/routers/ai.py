@@ -6,9 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.auth import get_current_user_id
 from app.core.naming import to_camel
+from app.core.dates import UTCDatetime
 from app.db.session import get_db
 from app.models.ai_task import AITask
-from app.models.book import Book
+from app.models.book import Book, BookStatus
 from app.services.ai_tasks import run_task
 
 router = APIRouter(tags=['ai'])
@@ -21,8 +22,8 @@ class TaskRead(BaseModel):
     status: str
     result: dict | None
     error: str | None
-    created_at: datetime
-    finished_at: datetime | None
+    created_at: UTCDatetime
+    finished_at: UTCDatetime | None
 
 
 def expire_task(task: AITask, db: Session, commit: bool = True) -> None:
@@ -41,6 +42,10 @@ def create_task(book_id: UUID, background: BackgroundTasks, db: Session = Depend
         raise HTTPException(404, '书籍不存在')
     if book.seller_id != user_id:
         raise HTTPException(403, '只能识别自己的书籍')
+    if book.is_suspended:
+        raise HTTPException(409, '书籍受管理限制，请联系管理员核实')
+    if book.status not in {BookStatus.DRAFT, BookStatus.AVAILABLE, BookStatus.OFFLINE}:
+        raise HTTPException(409, '预约中或已完成的书籍不能识别修改')
     active = db.scalar(select(AITask).where(AITask.book_id == book_id, AITask.status.in_(['queued', 'running'])))
     if active:
         expire_task(active, db, commit=False)

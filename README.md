@@ -57,3 +57,6 @@ npm run test:e2e
 技术基线为 React + TypeScript + Vite、FastAPI + SQLAlchemy + Alembic、PostgreSQL，采用模块化单体架构。首版在线下付款和交接。
 
 开始修改前请阅读 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [技术架构方案](珞珈书桥技术架构方案.md)。
+
+
+2026-11-08：新增15本真实封面样例、图片相册管理、管理员书籍限制与审计界面、零元赠书闭环。所有样例图已本地保存，来源见[样例说明](seed/demo-books/README.md)，当前功能和完整操作验收见[验收清单](docs/ACCEPTANCE.md)。学校认证暂缓，默认继续使用本机演示账号。

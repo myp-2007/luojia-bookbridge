@@ -37,6 +37,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       if (response.status === 401) window.dispatchEvent(new Event('session-expired'))
       throw new ApiError(message, code, response.status)
     }
+    if (response.status === 204) return undefined as T
     return await response.json() as T
   } catch (cause) {
     if (cause instanceof ApiError) throw cause

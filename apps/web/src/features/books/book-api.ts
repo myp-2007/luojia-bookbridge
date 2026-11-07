@@ -11,6 +11,8 @@ export interface BookRecognition {
 }
 
 interface BookApiRecord {
+  isSuspended?: boolean
+  moderationReason?: string | null
   id: string
   coverUrl?: string | null
   sellerId: string
@@ -105,6 +107,8 @@ function toBook(book: BookApiRecord): Book {
     sellerId: book.sellerId,
     coverUrl: book.coverUrl ? new URL(book.coverUrl, new URL(API_BASE_URL, window.location.origin)).href : undefined,
     description: book.description ?? undefined,
+    isSuspended: book.isSuspended,
+    moderationReason: book.moderationReason,
     title: book.title,
     author: book.author ?? '待补充',
     publisher: book.publisher ?? '待补充',
@@ -124,6 +128,17 @@ function toBook(book: BookApiRecord): Book {
 export async function fetchMyBooks(): Promise<Book[]> {
   const result = await apiRequest<BookListResponse>('/books/mine?page_size=100')
   return result.items.map(toBook)
+}
+export async function fetchAdminBooks(query: string, suspended: string, page: number) {
+  const params = new URLSearchParams({ q: query, page: String(page), page_size: '10' })
+  if (suspended) params.set('suspended', suspended)
+  const result = await apiRequest<BookListResponse>(`/admin/books?${params}`)
+  return { ...result, items: result.items.map(toBook) }
+}
+export async function moderateBook(id: string, suspended: boolean, reason: string): Promise<Book> {
+  return toBook(await apiRequest<BookApiRecord>(`/admin/books/${id}/moderation`, {
+    method: 'POST', body: JSON.stringify({ suspended, reason }),
+  }))
 }
 export async function updateBook(book: Book): Promise<Book> {
   const result = await apiRequest<BookApiRecord>(`/books/${book.id}`, {

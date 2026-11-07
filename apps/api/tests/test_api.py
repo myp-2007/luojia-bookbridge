@@ -486,3 +486,181 @@ def test_catalog_relevance_filters_and_pagination():
         assert client.get('/api/v1/books', params={**combined, 'available_only': True}).json()['total'] == 0
         assert client.get('/api/v1/books', params={'min_price_cents': 1000, 'max_price_cents': 500}).status_code == 400
         assert client.get('/api/v1/books', params={'q': '%_'}).json()['total'] == 0
+
+
+def png_image(color='green'):
+    from io import BytesIO
+    from PIL import Image
+    buffer = BytesIO()
+    Image.new('RGB', (12, 16), color).save(buffer, format='PNG')
+    return ('cover.png', buffer.getvalue(), 'image/png')
+
+
+def test_image_management_cover_order_permissions_and_file_cleanup(session_client):
+    client = session_client
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': '图片管理回归'}).json()
+    base = f"/api/v1/books/{book['id']}"
+    images = [client.post(base + '/images', files={'file': png_image(color)}).json() for color in ['red', 'green', 'blue']]
+    assert client.post(base + '/images', files={'file': png_image()}).status_code == 400
+    assert client.get(base).json()['coverUrl'] == images[0]['url']
+    demo_login(client, 'demo-buyer')
+    assert client.delete(base + '/images/' + images[0]['id']).status_code == 403
+    assert client.post(base + '/images/' + images[1]['id'] + '/cover').status_code == 403
+    demo_login(client, 'demo-seller')
+    other = client.post('/api/v1/books', json={'title': '另一册图片管理'}).json()
+    assert client.delete(f"/api/v1/books/{other['id']}/images/{images[0]['id']}").status_code == 404
+    chosen = client.post(base + '/images/' + images[2]['id'] + '/cover')
+    assert chosen.status_code == 200
+    assert [image['id'] for image in chosen.json()] == [images[2]['id'], images[0]['id'], images[1]['id']]
+    assert client.get(base).json()['coverUrl'] == images[2]['url']
+    assert client.delete(base + '/images/' + images[2]['id']).status_code == 204
+    assert client.get(images[2]['url']).status_code == 404
+    assert client.get(base).json()['coverUrl'] == images[0]['url']
+    assert client.delete(base + '/images/' + images[2]['id']).status_code == 404
+    assert client.post(base + '/images', files={'file': png_image()}).status_code == 201
+    demo_login(client, 'demo-buyer')
+    client.post(base + '/reservations', json={})
+    demo_login(client, 'demo-seller')
+    assert client.delete(base + '/images/' + images[0]['id']).status_code == 409
+    assert client.post(base + '/ai-tasks').status_code == 409
+
+
+def test_active_ai_task_locks_image_changes_until_timeout(session_client):
+    from app.models.ai_task import AITask
+    from datetime import datetime, timedelta, timezone
+    from uuid import UUID
+    client = session_client
+    demo_login(client)
+    book = client.post('/api/v1/books', json={'title': '识别时禁止删图'}).json()
+    base = f"/api/v1/books/{book['id']}"
+    image = client.post(base + '/images', files={'file': png_image()}).json()
+    with SessionLocal() as db:
+        task = AITask(book_id=UUID(book['id']), requested_by='demo-buyer', status='running')
+        db.add(task); db.commit(); task_id = task.id
+    assert client.delete(base + '/images/' + image['id']).status_code == 409
+    assert client.post(base + '/images/' + image['id'] + '/cover').status_code == 409
+    assert client.post(base + '/images', files={'file': png_image()}).status_code == 409
+    with SessionLocal() as db:
+        db.get(AITask, task_id).created_at = datetime.now(timezone.utc) - timedelta(minutes=3)
+        db.commit()
+    assert client.delete(base + '/images/' + image['id']).status_code == 204
+
+
+def test_admin_moderation_cannot_be_bypassed_and_restoration_is_explicit(session_client):
+    client = session_client
+    demo_login(client, 'demo-seller')
+    title = '审核限制独立回归'
+    book = client.post('/api/v1/books', json={'title': title}).json()
+    base = f"/api/v1/books/{book['id']}"
+    admin = f"/api/v1/admin/books/{book['id']}/moderation"
+    assert client.get('/api/v1/admin/books').status_code == 403
+    assert client.post(admin, json={'suspended': True, 'reason': '核实'}).status_code == 403
+    demo_login(client, 'demo-admin')
+    assert client.post(admin, json={'suspended': True, 'reason': '   '}).status_code == 422
+    result = client.post(admin, json={'suspended': True, 'reason': '图片需要核实'}).json()
+    assert result['isSuspended'] and result['status'] == 'offline'
+    listing = client.get('/api/v1/admin/books', params={'q': title, 'suspended': True}).json()
+    assert listing['total'] == 1
+    demo_login(client, 'demo-seller')
+    assert client.get('/api/v1/books', params={'q': title}).json()['total'] == 0
+    assert client.post(base + '/publish').status_code == 409
+    assert client.patch(base, json={'title': title}).status_code == 409
+    assert client.post(base + '/images', files={'file': png_image()}).status_code == 409
+    assert client.post(base + '/ai-tasks').status_code == 409
+    demo_login(client, 'demo-buyer')
+    assert client.post(base + '/reservations', json={}).status_code == 409
+    demo_login(client, 'demo-admin')
+    restored = client.post(admin, json={'suspended': False, 'reason': '已核实解除'}).json()
+    assert not restored['isSuspended'] and restored['status'] == 'offline'
+    logs = client.get('/api/v1/admin/audit-logs', params={'page_size': 1}).json()
+    next_logs = client.get('/api/v1/admin/audit-logs', params={'page_size': 1, 'page': 2}).json()
+    assert logs['total'] == next_logs['total'] >= 2
+    assert logs['items'][0]['id'] != next_logs['items'][0]['id']
+    demo_login(client, 'demo-seller')
+    assert client.post(base + '/publish').json()['status'] == 'available'
+
+
+@pytest.mark.parametrize('outcome', ['cancel', 'reject', 'expire', 'dispute-cancel', 'complete'])
+def test_moderation_preserves_trades_and_never_republishes_on_release(session_client, outcome):
+    from datetime import datetime, timedelta, timezone
+    from uuid import UUID
+    from app.models.reservation import Reservation
+    client = session_client
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': '受限交易-' + outcome}).json()
+    demo_login(client, 'demo-buyer')
+    reservation = client.post(f"/api/v1/books/{book['id']}/reservations", json={}).json()
+    trade = '/api/v1/reservations/' + reservation['id']
+    demo_login(client, 'demo-admin')
+    result = client.post(f"/api/v1/admin/books/{book['id']}/moderation", json={'suspended': True, 'reason': '核实交易'}).json()
+    assert result['status'] == 'reserved'
+    if outcome == 'expire':
+        with SessionLocal() as db:
+            db.get(Reservation, UUID(reservation['id'])).expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            db.commit()
+        client.get('/api/v1/books')
+    elif outcome == 'cancel':
+        demo_login(client, 'demo-buyer')
+        assert client.post(trade + '/cancel').status_code == 200
+    else:
+        demo_login(client, 'demo-seller')
+        assert client.post(trade + ('/reject' if outcome == 'reject' else '/confirm')).status_code == 200
+        if outcome == 'complete':
+            assert client.post(trade + '/seller-confirm').status_code == 200
+            demo_login(client, 'demo-buyer')
+            assert client.post(trade + '/buyer-confirm').json()['status'] == 'completed'
+        elif outcome == 'dispute-cancel':
+            demo_login(client, 'demo-buyer')
+            client.post(trade + '/dispute')
+            report = client.get('/api/v1/reports/mine').json()[0]
+            demo_login(client, 'demo-admin')
+            assert client.post(f"/api/v1/reports/admin/{report['id']}/resolve", json={'status': 'resolved', 'resolution': '双方核实取消', 'outcome': 'cancel'}).status_code == 200
+    final = client.get(f"/api/v1/books/{book['id']}").json()
+    assert final['isSuspended']
+    assert final['status'] == ('completed' if outcome == 'complete' else 'offline')
+
+
+def test_free_books_cannot_have_a_paid_price(session_client):
+    client = session_client
+    demo_login(client)
+    assert client.post('/api/v1/books', json={'title': '赠书价格校验', 'category': 'donation', 'priceCents': 100}).status_code == 422
+    book = client.post('/api/v1/books', json={'title': '免费赠书校验', 'category': 'donation', 'priceCents': 0}).json()
+    assert book['priceCents'] == 0 and book['category'] == 'donation'
+    assert client.patch(f"/api/v1/books/{book['id']}", json={'title': book['title'], 'category': 'donation', 'price': 2}).status_code == 422
+
+
+def test_demo_cover_archive_is_local_and_seed_never_overwrites_user_changes(session_client):
+    from uuid import NAMESPACE_URL, UUID, uuid5
+    from app.models.book_image import BookImage
+    from app.models.book import Book
+    client = session_client
+    book_id = uuid5(NAMESPACE_URL, 'luojia-bookbridge/demo-book/calculus-1')
+    images = client.get(f'/api/v1/books/{book_id}/images').json()
+    assert len(images) == 1
+    assert client.get(images[0]['url']).status_code == 200
+    with SessionLocal() as db:
+        db.get(Book, book_id).title = '用户修改过的样例，不应被重置'
+        db.delete(db.get(BookImage, UUID(images[0]['id'])))
+        db.commit()
+    seed()
+    assert client.get(f'/api/v1/books/{book_id}').json()['title'] == '用户修改过的样例，不应被重置'
+    assert client.get(f'/api/v1/books/{book_id}/images').json() == []
+
+
+def test_times_keep_the_same_instant_across_sqlite_and_timezone_clients(session_client):
+    client = session_client
+    demo_login(client, 'demo-seller')
+    book = client.post('/api/v1/books', json={'title': '时区回归样例'}).json()
+    assert book['createdAt'].endswith('Z')
+    demo_login(client, 'demo-buyer')
+    trade = client.post(f"/api/v1/books/{book['id']}/reservations", json={'proposedTime': '2026-11-09T14:30:00+08:00'}).json()
+    assert trade['proposedTime'] == '2026-11-09T06:30:00Z'
+    assert trade['expiresAt'].endswith('Z')
+    mine = client.get('/api/v1/reservations/mine').json()
+    assert next(item for item in mine if item['id'] == trade['id'])['proposedTime'] == '2026-11-09T06:30:00Z'
+    demo_login(client, 'demo-admin')
+    client.post(f"/api/v1/admin/books/{book['id']}/moderation", json={'suspended': True, 'reason': '时区记录校验'})
+    from datetime import datetime, timedelta
+    timestamp = client.get('/api/v1/admin/audit-logs').json()['items'][0]['createdAt']
+    assert datetime.fromisoformat(timestamp).utcoffset() == timedelta(0)

@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.core.auth import get_current_user_id, require_admin
+from app.core.dates import as_utc
 from app.db.session import get_db
 from app.models.report import Report, ReportStatus
 from app.models.reservation import Reservation, ReservationStatus
@@ -54,9 +55,10 @@ def read_all_reports(db: Session = Depends(get_db), _: str = Depends(require_adm
 
 
 @router.get('/admin/audit-logs')
-def audit(db: Session = Depends(get_db), _: str = Depends(require_admin)) -> dict:
-    logs = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(100)).all()
-    return {'items': [{'id': str(log.id), 'actorId': log.actor_id, 'action': log.action, 'targetId': log.target_id, 'description': log.description, 'createdAt': log.created_at} for log in logs], 'page': 1, 'pageSize': 100, 'total': len(logs)}
+def audit(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), db: Session = Depends(get_db), _: str = Depends(require_admin)) -> dict:
+    total = db.scalar(select(func.count()).select_from(AuditLog)) or 0
+    logs = db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    return {'items': [{'id': str(log.id), 'actorId': log.actor_id, 'action': log.action, 'targetId': log.target_id, 'description': log.description, 'createdAt': as_utc(log.created_at)} for log in logs], 'page': page, 'pageSize': page_size, 'total': total}
 
 
 @router.post('/reports/admin/{report_id}/resolve', response_model=ReportRead)
@@ -88,7 +90,7 @@ def resolve_report(report_id: UUID, payload: ReportResolve, db: Session = Depend
             book.status = BookStatus.COMPLETED
         else:
             reservation.status = ReservationStatus.CANCELLED
-            book.status = BookStatus.AVAILABLE
+            book.status = BookStatus.OFFLINE if book.is_suspended else BookStatus.AVAILABLE
         reservation.active_key = None
     report.status = ReportStatus(payload.status)
     report.handler_id = admin_id
