@@ -1,13 +1,16 @@
 import { useCallback, useState } from 'react'
 import { demoAccounts, saveProfile, type User } from '../auth/auth-api'
-import { fetchMyBooks, setBookVisibility, updateBook, uploadBookImage } from '../books/book-api'
+import { fetchMyBooks, setBookVisibility, updateBook } from '../books/book-api'
 import { PublishBookDialog } from '../books/PublishBookDialog'
+import { BookImagesDialog } from '../books/BookImagesDialog'
+import { AIRecognitionDialog } from '../ai/AIRecognitionDialog'
+import { AdminWorkspace } from './AdminWorkspace'
 import { fetchReports, resolveReport, type ReportRecord } from '../reports/report-api'
 import type { Book } from '../../types/books'
 import './account.css'
 import { useLiveRefresh } from '../../lib/use-live-refresh'
 
-type Tab = 'books' | 'reports' | 'admin'
+type Tab = 'books' | 'reports' | 'admin' | 'manage'
 type Props = {
   user: User | null; useApi: boolean; onClose: () => void
   onLogin: (id: string) => Promise<void>; onLogout: () => Promise<void>
@@ -28,6 +31,8 @@ export function AccountDialog(props: Props) {
   const [loading, setLoading] = useState(useApi)
   const [revision, setRevision] = useState(0)
   const [editing, setEditing] = useState<Book | null>(null)
+  const [mediaBook, setMediaBook] = useState<Book | null>(null)
+  const [aiBook, setAiBook] = useState<Book | null>(null)
   const [nickname, setNickname] = useState(user?.nickname ?? '')
   const [contact, setContact] = useState(user?.contact ?? '')
 
@@ -39,7 +44,7 @@ export function AccountDialog(props: Props) {
       } else if (tab === 'books') {
         const result = await fetchMyBooks()
         if (isCurrent()) setBooks(result)
-      } else {
+      } else if (tab !== 'manage') {
         const result = await fetchReports(tab === 'admin')
         if (isCurrent()) setReports(result)
       }
@@ -48,7 +53,7 @@ export function AccountDialog(props: Props) {
       if (isCurrent()) setSyncError(cause instanceof Error ? cause.message : '读取失败')
     } finally { if (isCurrent()) setLoading(false) }
   }, [user, tab])
-  useLiveRefresh(syncAccount, useApi && !busy && !editing, revision)
+  useLiveRefresh(syncAccount, useApi && !busy && !editing && !mediaBook && !aiBook && tab !== 'manage', revision)
 
 
   function reload() { setError(''); setSyncError(''); setLoading(true); setRevision((n) => n + 1) }
@@ -60,7 +65,7 @@ export function AccountDialog(props: Props) {
   }
 
   return (
-    <div className="dialog-backdrop" onMouseDown={() => { if (!busy) onClose() }}>
+    <div className="dialog-backdrop" onMouseDown={() => { if (!busy && !mediaBook && !aiBook && !editing) onClose() }}>
       <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => event.stopPropagation()}>
         <button className="dialog-close" disabled={busy} onClick={onClose} aria-label="关闭个人中心">×</button>
         <span className="section-kicker">我的书桥</span>
@@ -70,13 +75,16 @@ export function AccountDialog(props: Props) {
           <div className="account-profile"><span>{user.college} · {user.role === 'admin' ? '管理员' : '同学'}</span><button disabled={busy} onClick={() => perform(props.onLogout)}>退出登录</button></div>
           <button className="primary-action" onClick={props.onReservations}>查看我的预约与交接 →</button>
           <details className="profile-editor"><summary>昵称与联系方式</summary><form onSubmit={(event) => { event.preventDefault(); void perform(async () => props.onProfile(await saveProfile(nickname, contact))) }}><label>昵称<input required maxLength={80} value={nickname} onChange={(event) => setNickname(event.target.value)} /></label><label>自愿提供的联系方式<input maxLength={200} value={contact} onChange={(event) => setContact(event.target.value)} placeholder="例如演示微信号或约定方式" /></label><p className="account-hint">仅在卖家接受预约后向交易对方展示，清空即可停止分享。</p><button disabled={busy}>保存资料</button></form></details>
-          <div className="account-tabs"><button aria-pressed={tab === 'books'} onClick={() => { setTab('books'); reload() }}>我的发布</button><button aria-pressed={tab === 'reports'} onClick={() => { setTab('reports'); reload() }}>我的反馈</button>{user.role === 'admin' && <button aria-pressed={tab === 'admin'} onClick={() => { setTab('admin'); reload() }}>处理举报</button>}</div>
-          {!loading && tab === 'books' && <div className="account-list">{!books.length && <p>还没有发布书籍，点击底部“发布”添加第一本书。</p>}{books.map((book) => <article key={book.id}><div><h3>{book.title}</h3><span>{statusNames[book.status]} · ¥{book.price.toFixed(2)}</span></div>{['available', 'offline', 'draft'].includes(book.status) && <div className="account-actions"><button disabled={busy} onClick={() => setEditing(book)}>编辑</button><label>补传图片<input type="file" disabled={busy} accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void perform(async () => { await uploadBookImage(book.id, file); props.onBooksChange() }); event.target.value = '' }} /></label><button disabled={busy} onClick={() => perform(async () => { await setBookVisibility(book.id, book.status === 'available' ? 'offline' : 'publish'); props.onBooksChange() })}>{book.status === 'available' ? '下架' : '重新发布'}</button></div>}</article>)}</div>}
-          {!loading && tab !== 'books' && <div className="account-list">{!reports.length && <p>暂无反馈记录。</p>}{reports.map((report) => <ReportItem key={report.id} report={report} admin={tab === 'admin'} disabled={busy} onResolve={(resolution, status, outcome) => perform(() => resolveReport(report.id, resolution, status, outcome))} />)}</div>}
+          <div className="account-tabs"><button aria-pressed={tab === 'books'} onClick={() => { setTab('books'); reload() }}>我的发布</button><button aria-pressed={tab === 'reports'} onClick={() => { setTab('reports'); reload() }}>我的反馈</button>{user.role === 'admin' && <button aria-pressed={tab === 'admin'} onClick={() => { setTab('admin'); reload() }}>处理举报</button>}{user.role === 'admin' && <button aria-pressed={tab === 'manage'} onClick={() => { setTab('manage'); setLoading(false) }}>管理书架</button>}</div>
+          {!loading && tab === 'books' && <div className="account-list">{!books.length && <p>还没有发布书籍，点击底部“发布”添加第一本书。</p>}{books.map((book) => <article key={book.id}><div><h3>{book.title}</h3><span>{statusNames[book.status]} · ¥{book.price.toFixed(2)}</span></div>{book.isSuspended && <p className="moderation-note">管理限制中 · {book.moderationReason}</p>}{!book.isSuspended && ['available', 'offline', 'draft'].includes(book.status) && <div className="account-actions"><button disabled={busy} onClick={() => setEditing(book)}>编辑</button><button disabled={busy} onClick={() => setMediaBook(book)}>管理图片</button><button disabled={busy} onClick={() => setAiBook(book)}>AI 识别</button><button disabled={busy} onClick={() => perform(async () => { await setBookVisibility(book.id, book.status === 'available' ? 'offline' : 'publish'); props.onBooksChange() })}>{book.status === 'available' ? '下架' : '重新发布'}</button></div>}</article>)}</div>}
+          {tab === 'manage' && user.role === 'admin' && <AdminWorkspace onChanged={props.onBooksChange} />}
+          {!loading && (tab === 'reports' || tab === 'admin') && <div className="account-list">{!reports.length && <p>暂无反馈记录。</p>}{reports.map((report) => <ReportItem key={report.id} report={report} admin={tab === 'admin'} disabled={busy} onResolve={(resolution, status, outcome) => perform(() => resolveReport(report.id, resolution, status, outcome))} />)}</div>}
         </>}
         {loading && <p role="status">正在读取…</p>}
         {(error || syncError) && <div className="form-error" role="alert">{error || syncError}<button onClick={reload} disabled={busy}>重试</button></div>}
       </section>
+      {mediaBook && <BookImagesDialog book={mediaBook} onClose={() => { setMediaBook(null); reload() }} onChanged={() => { props.onBooksChange(); reload() }} />}
+      {aiBook && <AIRecognitionDialog book={aiBook} useApi={useApi} onClose={() => { setAiBook(null); reload() }} onApplied={() => { props.onBooksChange(); reload() }} />}
       {editing && <PublishBookDialog initialBook={editing} onClose={() => setEditing(null)} onSubmit={async (book) => { await updateBook(book); setEditing(null); props.onBooksChange(); reload() }} />}
     </div>
   )

@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
-from app.routers import ai, auth, books, health, reports, reservations
+from app.routers import admin, ai, auth, books, health, reports, reservations
 
 settings = get_settings()
 
@@ -35,7 +35,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-for router in [health.router, books.router, reservations.router, reports.router, auth.router, ai.router]:
+for router in [health.router, books.router, reservations.router, reports.router, auth.router, ai.router, admin.router]:
     app.include_router(router, prefix='/api/v1')
 
 

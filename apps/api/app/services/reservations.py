@@ -38,7 +38,7 @@ def create_reservation(db: Session, book_id: UUID, buyer_id: str, payload: Reser
     book = db.scalar(select(Book).where(Book.id == book_id).with_for_update())
     if book is None:
         raise LookupError('书籍不存在')
-    if book.status != BookStatus.AVAILABLE:
+    if book.status != BookStatus.AVAILABLE or book.is_suspended:
         raise ValueError('该书当前不可预约')
     if book.seller_id == buyer_id:
         raise ValueError('不能预约自己发布的书籍')
@@ -106,7 +106,7 @@ def update_reservation_status(db: Session, reservation_id: UUID, actor_id: str, 
     reservation.status = next_status
     if next_status not in ACTIVE_STATUSES:
         reservation.active_key = None
-        book.status = BookStatus.AVAILABLE
+        book.status = BookStatus.OFFLINE if book.is_suspended else BookStatus.AVAILABLE
     db.commit()
     db.refresh(reservation)
     return reservation
@@ -165,6 +165,6 @@ def expire_pending(db: Session) -> None:
             reservation.status = ReservationStatus.EXPIRED
             reservation.active_key = None
             if book.status == BookStatus.RESERVED:
-                book.status = BookStatus.AVAILABLE
+                book.status = BookStatus.OFFLINE if book.is_suspended else BookStatus.AVAILABLE
     if ids:
         db.commit()

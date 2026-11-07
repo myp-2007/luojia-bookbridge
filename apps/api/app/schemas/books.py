@@ -1,9 +1,9 @@
-from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.naming import to_camel
+from app.core.dates import UTCDatetime
 from app.models.book import BookStatus, BookCategory
 
 
@@ -24,6 +24,12 @@ class BookCreate(APIModel):
     category: str = 'textbook'
     pickup_point: str | None = Field(default=None, max_length=120)
 
+    @model_validator(mode='after')
+    def donation_is_free(self):
+        cents = self.price_cents if self.price_cents is not None else round(self.price * 100)
+        if self.category == 'donation' and cents != 0:
+            raise ValueError('免费赠书的价格必须为0')
+        return self
 
     @field_validator('title')
     @classmethod
@@ -52,7 +58,9 @@ class BookRead(APIModel):
     pickup_point: str | None
     ai_status: str
     cover_url: str | None = None
-    created_at: datetime
+    is_suspended: bool = False
+    moderation_reason: str | None = None
+    created_at: UTCDatetime
 
 
 class BookListResponse(APIModel):

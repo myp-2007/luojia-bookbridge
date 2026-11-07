@@ -1,9 +1,9 @@
-from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.naming import to_camel
+from app.core.dates import UTCDatetime
 
 
 class ReportCreate(BaseModel):
@@ -27,8 +27,8 @@ class ReportRead(BaseModel):
     status: str
     handler_id: str | None
     resolution: str | None
-    created_at: datetime
-    resolved_at: datetime | None
+    created_at: UTCDatetime
+    resolved_at: UTCDatetime | None
 
 
 class ReportResolve(BaseModel):

@@ -17,3 +17,8 @@
 .account-list h3 { margin: 0 0 9px; color: #315b43; font-size: 16px; }
 .account-list p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 @media (max-width: 480px) { .account-panel { padding: 22px; } }
+
+.admin-search { margin-bottom: 18px; }
+.admin-book-heading { display: flex; gap: 15px; align-items: center; }
+.admin-book-heading img { width: 52px; height: 70px; object-fit: contain; border-radius: 6px; }
+.admin-id { overflow-wrap: anywhere; color: #84948a; font-size: 11px !important; }

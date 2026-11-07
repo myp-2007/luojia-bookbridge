@@ -112,23 +112,41 @@ paths:
           title: Page Size
       - name: min_price_cents
         in: query
-        schema: {type: integer, minimum: 0, maximum: 10000000}
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000000
       - name: max_price_cents
         in: query
-        schema: {type: integer, minimum: 0, maximum: 10000000}
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000000
       - name: condition
         in: query
-        schema: {type: string, maxLength: 40}
+        schema:
+          type: string
+          maxLength: 40
       - name: has_notes
         in: query
-        schema: {type: boolean}
+        schema:
+          type: boolean
       - name: available_only
         in: query
-        schema: {type: boolean, default: false}
+        schema:
+          type: boolean
+          default: false
       - name: sort
         in: query
         description: 默认有关键词按匹配度，无关键词按最新发布。价格相同时按发布时间和 ID 排序。
-        schema: {type: string, enum: [relevance, newest, price_asc, price_desc], default: relevance}
+        schema:
+          type: string
+          enum:
+          - relevance
+          - newest
+          - price_asc
+          - price_desc
+          default: relevance
       responses:
         '200':
           description: Successful Response
@@ -136,14 +154,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookListResponse'
-              example: {items: [], page: 1, pageSize: 20, total: 0}
+              example:
+                items: []
+                page: 1
+                pageSize: 20
+                total: 0
         '400':
           description: 价格区间无效或分类不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example: {code: HTTP_400, message: 最低价不能高于最高价, details: {}, requestId: example-request-id, detail: 最低价不能高于最高价}
+              example:
+                code: HTTP_400
+                message: 最低价不能高于最高价
+                details: {}
+                requestId: example-request-id
+                detail: 最低价不能高于最高价
         '422':
           description: Validation Error
           content:
@@ -2316,30 +2343,21 @@ paths:
       summary: Audit
       operationId: audit_api_v1_admin_audit_logs_get
       parameters:
-      - name: x-user-id
-        in: header
+      - name: page
+        in: query
         required: false
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-User-Id
-      - name: x-role
-        in: header
+          type: integer
+          minimum: 1
+          default: 1
+      - name: page_size
+        in: query
         required: false
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Role
-      - name: bookbridge_session
-        in: cookie
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Bookbridge Session
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
       responses:
         '200':
           description: Successful Response
@@ -3134,6 +3152,262 @@ paths:
                 details: {}
                 requestId: example-request-id
                 detail: 当前状态不允许操作
+  /api/v1/books/{book_id}/images/{image_id}:
+    delete:
+      tags:
+      - books
+      summary: 删除图片，封面删除后顺延。数据库提交后清理文件。
+      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: image_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Image Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '204':
+          description: Successful Response
+        '401': &id001
+          description: 请先登录
+        '403': &id002
+          description: 权限不足
+        '404': &id003
+          description: 书籍或图片不存在
+        '409': &id004
+          description: 状态不允许或识别任务进行中
+        '422': &id005
+          description: 输入无效
+      operationId: delete_book_image_api_v1_books__book_id__images__image_id__delete
+  /api/v1/books/{book_id}/images/{image_id}/cover:
+    post:
+      tags:
+      - books
+      summary: 设置封面并返回有序图片列表。
+      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: image_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Image Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookImageRead'
+        '401': *id001
+        '403': *id002
+        '404': *id003
+        '409': *id004
+        '422': *id005
+      operationId: set_cover_api_v1_books__book_id__images__image_id__cover_post
+  /api/v1/admin/books:
+    get:
+      tags:
+      - admin
+      summary: 管理员分页查询所有书籍
+      description: 管理员Cookie权限，q匹配书名、作者或发布者ID。
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          default: ''
+          title: Q
+      - name: suspended
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Suspended
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 20
+          title: Page Size
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '401': *id001
+        '403': *id002
+        '404': *id003
+        '409': *id004
+        '422': *id005
+      operationId: read_books_api_v1_admin_books_get
+  /api/v1/admin/books/{book_id}/moderation:
+    post:
+      tags:
+      - admin
+      summary: 限制或解除书籍限制并记审计日志
+      description: 管理员Cookie权限。限制隐藏书架并阻止新预约，进行中交易和历史保留。解除不自动上架。
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModerationCreate'
+            example:
+              suspended: true
+              reason: 图片与描述不符，请核实
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookRead'
+        '401': *id001
+        '403': *id002
+        '404': *id003
+        '409': *id004
+        '422': *id005
+      operationId: moderate_api_v1_admin_books__book_id__moderation_post
 components:
   schemas:
     Body_upload_book_image_api_v1_books__book_id__images_post:
@@ -3340,6 +3614,15 @@ components:
           - type: string
           - type: 'null'
           title: Coverurl
+        isSuspended:
+          type: boolean
+          title: Issuspended
+          default: false
+        moderationReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Moderationreason
         createdAt:
           type: string
           format: date-time
@@ -3799,3 +4082,18 @@ components:
         requestId:
           type: string
         detail: {}
+    ModerationCreate:
+      properties:
+        suspended:
+          type: boolean
+          title: Suspended
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Reason
+      type: object
+      required:
+      - suspended
+      - reason
+      title: ModerationCreate

@@ -12,6 +12,26 @@ async function openTrades(page: Page) {
   await page.getByRole('button', { name: '查看我的预约与交接 →' }).click()
 }
 
+test('fifteen real local sample covers are browsable without external image requests', async ({ page }) => {
+  const externalImages: string[] = []
+  page.on('request', (request) => { if (request.resourceType() === 'image' && !request.url().startsWith('http://127.0.0.1:5174')) externalImages.push(request.url()) })
+  await page.goto('/')
+  const books = (await (await page.request.get('/api/v1/books?page_size=100')).json()).items
+  const samples = books.filter((book: { description: string }) => book.description?.includes('比赛样例'))
+  expect(samples).toHaveLength(15)
+  for (const book of samples) {
+    expect(book.coverUrl).toBeTruthy()
+    expect((await page.request.get(book.coverUrl)).status()).toBe(200)
+  }
+  await expect(page.getByText('第 1 / 2 页 · 共 15 本', { exact: true })).toBeVisible()
+  await page.screenshot({ path: 'test-results/sample-books-mobile.png', fullPage: true })
+  await page.getByPlaceholder('搜索书名、作者、出版社...').fill('高等数学')
+  await page.getByRole('button', { name: '查看高等数学（第七版）（上册）详情', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('img')).toBeVisible()
+  await expect(page.getByRole('dialog')).toContainText('比赛样例')
+  expect(externalImages).toEqual([])
+})
+
 test('real API: publish, reserve, accept and complete across two browser sessions', async ({ page, browser }) => {
   await page.addInitScript(() => { Object.defineProperty(window.crypto, 'randomUUID', { value: undefined }) })
   const title = `浏览器实测教材-${Date.now()}`
@@ -110,7 +130,8 @@ test('my books supports editing, offline/publish and valid image uploads', async
   await record.getByRole('button', { name: '下架', exact: true }).click()
   await expect(record.getByRole('button', { name: '重新发布', exact: true })).toBeVisible()
   await record.getByRole('button', { name: '重新发布', exact: true }).click()
-  await record.locator('input[type=file]').setInputFiles('src/assets/hero.png')
+  await record.getByRole('button', { name: '管理图片' }).click()
+  await page.getByLabel('添加书籍图片').setInputFiles('src/assets/hero.png')
   await expect.poll(async () => (await (await page.request.get(`/api/v1/books/${book.id}`)).json()).coverUrl).toBeTruthy()
 })
 
@@ -231,4 +252,138 @@ test('catalog combines price and notes filters with server pagination', async ({
   await expect(page.getByRole('button', { name: '查看筛选测试教材 2详情', exact: true })).toBeVisible()
   await page.getByText('筛选与排序', { exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: 'test-results/catalog-filters.png' })
+})
+
+test('image management uploads, changes cover, deletes and opens the gallery', async ({ page }) => {
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  const title = `图片相册实测-${Date.now()}`
+  const book = await (await page.request.post('/api/v1/books', { data: { title, priceCents: 1000 } })).json()
+  await page.goto('/')
+  await page.getByRole('button', { name: /我的$/ }).click()
+  await page.getByRole('article').filter({ hasText: title }).getByRole('button', { name: '管理图片' }).click()
+  const panel = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: '图片管理' }) })
+  for (let count = 1; count <= 2; count++) {
+    await panel.getByLabel('添加书籍图片').setInputFiles(count === 1 ? '../../seed/demo-books/covers/calculus-1.jpg' : '../../seed/demo-books/covers/linear-algebra.jpg')
+    await expect(panel.getByRole('img')).toHaveCount(count)
+  }
+  const images = await (await page.request.get(`/api/v1/books/${book.id}/images`)).json()
+  await panel.getByRole('button', { name: '设为封面' }).nth(1).click()
+  await expect.poll(async () => (await (await page.request.get(`/api/v1/books/${book.id}`)).json()).coverUrl).toBe(images[1].url)
+  await panel.locator('.media-item').first().getByRole('button', { name: '删除图片' }).click()
+  await panel.getByRole('button', { name: '确认删除', exact: true }).click()
+  await expect(panel.getByRole('img')).toHaveCount(1)
+  await expect(panel.getByRole('alert')).toHaveCount(0)
+  await panel.getByLabel('添加书籍图片').setInputFiles('../../seed/demo-books/covers/probability.jpg')
+  await expect(panel.getByRole('img')).toHaveCount(2)
+  await expect.poll(() => panel.getByRole('img').evaluateAll((nodes) => nodes.every((node) => (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0))).toBe(true)
+  await page.screenshot({ path: 'test-results/image-management-mobile.png' })
+  await panel.getByRole('button', { name: '完成整理' }).click()
+  await page.getByRole('button', { name: '关闭个人中心' }).click()
+  await page.getByPlaceholder('搜索书名、作者、出版社...').fill(title)
+  await page.getByRole('button', { name: `查看${title}详情` }).click()
+  await page.getByRole('button', { name: '查看图片2', exact: true }).click()
+  await expect(page.getByRole('button', { name: '查看图片2', exact: true })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('admin manages a book, the owner sees restriction, and the audit is browsable', async ({ page, browser }) => {
+  const owner = await browser.newContext({ baseURL: 'http://127.0.0.1:5174' })
+  try {
+    await owner.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+    const title = `审核实测-${Date.now()}`
+    const book = await (await owner.request.post('/api/v1/books', { data: { title, priceCents: 1000 } })).json()
+    await loginUI(page, '演示管理员')
+    await page.getByRole('button', { name: /我的$/ }).click()
+    await page.getByRole('button', { name: '管理书架' }).click()
+    await page.getByLabel('查找书籍').fill(title)
+    await page.getByRole('button', { name: '搜索书籍', exact: true }).click()
+    const item = page.getByRole('article').filter({ hasText: title })
+    await item.getByLabel('处理说明').fill('封面需要核实，暂时隐藏')
+    await item.getByRole('button', { name: '限制书籍展示' }).click()
+    await expect(item.getByRole('button', { name: '解除书籍限制' })).toBeVisible()
+    expect((await owner.request.post(`/api/v1/books/${book.id}/publish`)).status()).toBe(409)
+    expect((await (await owner.request.get(`/api/v1/books?q=${encodeURIComponent(title)}`)).json()).total).toBe(0)
+    const ownerPage = await owner.newPage()
+    await ownerPage.goto('/')
+    await ownerPage.getByRole('button', { name: /我的$/ }).click()
+    const ownRecord = ownerPage.getByRole('article').filter({ hasText: title })
+    await expect(ownRecord).toContainText('管理限制中')
+    await expect(ownRecord.getByRole('button', { name: '重新发布' })).toHaveCount(0)
+    await item.getByLabel('处理说明').fill('资料已核实，解除限制')
+    await item.getByRole('button', { name: '解除书籍限制' }).click()
+    await expect(item.getByRole('button', { name: '限制书籍展示' })).toBeVisible()
+    await ownRecord.getByRole('button', { name: '重新发布' }).click({ timeout: 12000 })
+    await expect(ownRecord.getByRole('button', { name: '下架', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '操作记录', exact: true }).click()
+    await expect(page.getByRole('article').filter({ hasText: '资料已核实，解除限制' })).toBeVisible()
+    await page.screenshot({ path: 'test-results/admin-audit-mobile.png' })
+  } finally { await owner.close() }
+})
+
+test('free book form fixes the price at zero and the recipient can complete the handover', async ({ page, browser }) => {
+  await loginUI(page, '小珞')
+  await page.getByRole('button', { name: /发布$/ }).click()
+  const title = `免费赠书实测-${Date.now()}`
+  await page.getByLabel('书名', { exact: true }).fill(title)
+  await page.getByLabel('分类', { exact: true }).selectOption('donation')
+  await expect(page.getByLabel('价格（元）')).toHaveValue('0')
+  await expect(page.getByLabel('价格（元）')).toBeDisabled()
+  await page.getByLabel('交接地点', { exact: true }).fill('图书馆正门')
+  await page.getByRole('button', { name: '保存并发布', exact: true }).click()
+  const book = (await (await page.request.get(`/api/v1/books?q=${encodeURIComponent(title)}`)).json()).items[0]
+  const recipient = await browser.newContext({ baseURL: 'http://127.0.0.1:5174' })
+  try {
+    await recipient.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-reader' } })
+    const guest = await recipient.newPage()
+    await guest.goto('/')
+    await guest.getByPlaceholder('搜索书名、作者、出版社...').fill(title)
+    await guest.getByRole('button', { name: `查看${title}详情` }).click()
+    await guest.getByRole('button', { name: '预约交接', exact: true }).click()
+    await openTrades(page)
+    await page.getByRole('button', { name: '我卖出的' }).click()
+    const seller = page.getByRole('article').filter({ hasText: title })
+    await seller.getByRole('button', { name: '接受预约', exact: true }).click()
+    await openTrades(guest)
+    const buyer = guest.getByRole('article').filter({ hasText: title })
+    await buyer.getByRole('button', { name: '确认已收到书' }).click()
+    await buyer.getByRole('button', { name: '确认交接完成', exact: true }).click()
+    await seller.getByRole('button', { name: '确认已交出书' }).click()
+    await seller.getByRole('button', { name: '确认交接完成', exact: true }).click()
+    await expect(buyer.getByText('交易已完成', { exact: true })).toBeVisible({ timeout: 12000 })
+    expect((await (await page.request.get(`/api/v1/books/${book.id}`)).json()).status).toBe('completed')
+  } finally { await recipient.close() }
+})
+
+test('book feedback is submitted, reviewed, returned to the reporter, and logout revokes login', async ({ page, browser }) => {
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-seller' } })
+  const title = `反馈流程-${Date.now()}`
+  await page.request.post('/api/v1/books', { data: { title, priceCents: 1000 } })
+  await page.request.post('/api/v1/auth/dev-login', { data: { userId: 'demo-fourth' } })
+  await page.goto('/')
+  await page.getByPlaceholder('搜索书名、作者、出版社...').fill(title)
+  await page.getByRole('button', { name: `查看${title}详情` }).click()
+  await page.getByRole('button', { name: '反馈问题', exact: true }).click()
+  const description = `样例书籍图片需要核对-${Date.now()}`
+  const report = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: '告诉我们发生了什么' }) })
+  await report.getByLabel('问题说明').fill(description)
+  await report.getByRole('button', { name: '提交反馈' }).click()
+  await expect(report).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '关闭详情' })).toHaveCount(0)
+  await page.getByRole('button', { name: /我的$/ }).click()
+  await page.getByRole('button', { name: '我的反馈', exact: true }).click()
+  const ownReport = page.getByRole('article').filter({ hasText: description })
+  await expect(ownReport).toContainText('待处理')
+  const admin = await browser.newContext({ baseURL: 'http://127.0.0.1:5174' })
+  try {
+    const adminPage = await admin.newPage()
+    await loginUI(adminPage, '演示管理员')
+    await adminPage.getByRole('button', { name: /我的$/ }).click()
+    await adminPage.getByRole('button', { name: '处理举报', exact: true }).click()
+    const adminReport = adminPage.getByRole('article').filter({ hasText: description })
+    await adminReport.getByLabel('核实说明').fill('核实完成，资料已确认')
+    await adminReport.getByRole('button', { name: '保存处理结果', exact: true }).click()
+    await expect(ownReport).toContainText('核实完成，资料已确认', { timeout: 12000 })
+    await page.getByRole('button', { name: '退出登录', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '欢迎来到珞珈书桥', exact: true })).toBeVisible()
+    expect((await page.request.get('/api/v1/me')).status()).toBe(401)
+  } finally { await admin.close() }
 })

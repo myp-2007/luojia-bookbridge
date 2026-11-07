@@ -12,8 +12,8 @@ from app.providers.book_recognition import MockBookRecognitionProvider
 from app.schemas.ai import BookRecognitionRead, RecognitionFieldRead
 from app.schemas.books import BookCreate, BookListResponse, BookRead
 from app.schemas.images import BookImageRead
-from app.services.books import create_book, get_book, list_books, publish_book, to_book_read
-from app.services.images import list_book_images, save_book_image
+from app.services.books import create_book, get_book, list_books, publish_book, to_book_read, editable_book
+from app.services.images import list_book_images, save_book_image, to_image_read, remove_image, choose_cover
 
 router = APIRouter(prefix='/books', tags=['books'])
 
@@ -59,17 +59,6 @@ def mine(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), d
     return BookListResponse(items=[to_book_read(book) for book in items], page=page, page_size=page_size, total=total)
 
 
-def editable_book(db: Session, book_id: UUID, actor_id: str) -> Book:
-    book = db.scalar(select(Book).where(Book.id == book_id).with_for_update().execution_options(populate_existing=True))
-    if not book:
-        raise HTTPException(404, '书籍不存在')
-    if book.seller_id != actor_id:
-        raise HTTPException(403, '只能管理自己的书籍')
-    if book.status not in {BookStatus.DRAFT, BookStatus.AVAILABLE, BookStatus.OFFLINE}:
-        raise HTTPException(409, '预约中或已完成的书籍不能修改')
-    return book
-
-
 @router.patch('/{book_id}', response_model=BookRead)
 def edit(book_id: UUID, payload: BookCreate, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> BookRead:
     book = editable_book(db, book_id, user_id)
@@ -105,18 +94,19 @@ def read_book_images(book_id: UUID, db: Session = Depends(get_db)) -> list[BookI
     book = get_book(db, book_id)
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
-    return [
-        BookImageRead(
-            id=image.id,
-            book_id=image.book_id,
-            original_name=image.original_name,
-            content_type=image.content_type,
-            size_bytes=image.size_bytes,
-            url=f'/storage/{image.storage_path.replace(chr(92), chr(47))}',
-            created_at=image.created_at,
-        )
-        for image in list_book_images(db, book_id)
-    ]
+    return [to_image_read(image) for image in list_book_images(db, book_id)]
+
+
+@router.delete('/{book_id}/images/{image_id}', status_code=204)
+def delete_book_image(book_id: UUID, image_id: UUID, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> None:
+    editable_book(db, book_id, user_id)
+    remove_image(db, book_id, image_id)
+
+
+@router.post('/{book_id}/images/{image_id}/cover', response_model=list[BookImageRead])
+def set_cover(book_id: UUID, image_id: UUID, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> list[BookImageRead]:
+    editable_book(db, book_id, user_id)
+    return [to_image_read(image) for image in choose_cover(db, book_id, image_id)]
 
 
 @router.post('/{book_id}/publish', response_model=BookRead)
@@ -132,16 +122,12 @@ def publish_existing_book(book_id: UUID, db: Session = Depends(get_db), seller_i
 
 @router.post('/{book_id}/images', response_model=BookImageRead, status_code=status.HTTP_201_CREATED)
 async def upload_book_image(book_id: UUID, file: UploadFile = File(...), db: Session = Depends(get_db), seller_id: str = Depends(get_current_user_id)) -> BookImageRead:
-    book = get_book(db, book_id)
-    if book is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
-    if book.seller_id != seller_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='只能为自己发布的书籍上传图片')
+    book = editable_book(db, book_id, seller_id)
     try:
         image = await save_book_image(db, book, file)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
-    return BookImageRead(id=image.id, book_id=image.book_id, original_name=image.original_name, content_type=image.content_type, size_bytes=image.size_bytes, url=f'/storage/{image.storage_path.replace(chr(92), chr(47))}', created_at=image.created_at)
+    return to_image_read(image)
 
 
 @router.post('/{book_id}/ai-extract', response_model=BookRecognitionRead)
@@ -151,6 +137,8 @@ def recognize_book(book_id: UUID, db: Session = Depends(get_db), seller_id: str 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
     if book.seller_id != seller_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='只能识别自己发布的书籍')
+    if book.is_suspended:
+        raise HTTPException(409, '书籍受管理限制，请联系管理员核实')
     result = MockBookRecognitionProvider().recognize(book)
     book.ai_status = 'succeeded'
     db.commit()

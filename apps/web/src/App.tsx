@@ -174,7 +174,7 @@ function App() {
 
       <main>
         <section className="hero-card">
-          <div className="hero-copy"><span className="hero-kicker">AI 辅助检索</span><h2>让闲置的书，继续被需要</h2><p>按书名、作者或出版社寻找合适的二手书，在线预约后在校内公共地点完成交接。</p></div>
+          <div className="hero-copy"><span className="hero-kicker">AI 辅助识别</span><h2>让闲置的书，继续被需要</h2><p>按书名、作者或出版社寻找合适的二手书，在线预约后在校内公共地点完成交接。</p></div>
           <div className="hero-orbit" aria-hidden="true"><span>书</span><i /><i /><i /></div>
         </section>
 
@@ -185,7 +185,7 @@ function App() {
 
         <section className="feature-grid" aria-label="平台功能">
           <FeatureCard icon="▣" title="教材交易" description="专业教材，低价流转" tone="blue" onClick={() => selectFeature('textbook')} />
-          <FeatureCard icon="☰" title="课外交流" description="拓展阅读，分享好书" tone="green" onClick={() => selectFeature('reading')} />
+          <FeatureCard icon="☰" title="课外读物" description="拓展阅读，分享好书" tone="green" onClick={() => selectFeature('reading')} />
           <FeatureCard icon="♡" title="免费赠书" description="把闲置好书送给下一位同学" tone="gold" onClick={() => selectFeature('donation')} />
         </section>
 

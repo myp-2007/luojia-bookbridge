@@ -6,12 +6,12 @@ from urllib.parse import urlsplit
 from uuid import UUID
 import httpx
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.models.ai_task import AITask
 from app.models.book import Book
 from app.models.book_image import BookImage
+from app.services.images import list_book_images
 from app.providers.book_recognition import MockBookRecognitionProvider
 
 
@@ -86,7 +86,7 @@ def run_task(task_id: UUID) -> None:
         task.status = 'running'
         db.commit()
         book = db.get(Book, task.book_id)
-        images = list(db.scalars(select(BookImage).where(BookImage.book_id == task.book_id)).all())
+        images = list_book_images(db, task.book_id)
         # Release the transaction before any remote HTTP call.
         db.expunge(book)
         for image in images:

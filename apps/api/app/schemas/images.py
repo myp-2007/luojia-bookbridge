@@ -1,9 +1,9 @@
-from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from app.core.naming import to_camel
+from app.core.dates import UTCDatetime
 
 
 class BookImageRead(BaseModel):
@@ -15,4 +15,4 @@ class BookImageRead(BaseModel):
     content_type: str
     size_bytes: int
     url: str
-    created_at: datetime
+    created_at: UTCDatetime
