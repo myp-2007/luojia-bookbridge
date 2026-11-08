@@ -32,9 +32,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
       const detail = Array.isArray(payload.detail)
         ? payload.detail.map((item) => typeof item === 'object' && item !== null && 'msg' in item ? String(item.msg) : String(item)).join('；')
         : typeof payload.detail === 'string' ? payload.detail : undefined
-      const message = typeof payload.message === 'string' ? payload.message : detail ?? '请求失败，请稍后重试'
+      const message = response.status === 422 && detail ? detail.replace(/Value error, /g, '') : typeof payload.message === 'string' ? payload.message : detail ?? '请求失败，请稍后重试'
       const code = typeof payload.code === 'string' ? payload.code : 'API_ERROR'
-      if (response.status === 401) window.dispatchEvent(new Event('session-expired'))
+      if (response.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/register')) window.dispatchEvent(new Event('session-expired'))
       throw new ApiError(message, code, response.status)
     }
     if (response.status === 204) return undefined as T

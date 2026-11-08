@@ -3,9 +3,8 @@ import { useLiveRefresh } from '../../lib/use-live-refresh'
 import type { Book } from '../../types/books'
 import { uploadBookImage } from './book-api'
 import { deleteBookImage, fetchBookImages, setBookCover, type BookImage } from './book-image-api'
-import './media.css'
 
-export function BookImagesDialog({ book, onClose, onChanged }: { book: Book; onClose: () => void; onChanged: () => void }) {
+export function BookImagesPage({ book, onClose, onChanged }: { book: Book; onClose: () => void; onChanged: () => void }) {
   const [images, setImages] = useState<BookImage[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -34,9 +33,8 @@ export function BookImagesDialog({ book, onClose, onChanged }: { book: Book; onC
     finally { setBusy(false) }
   }
 
-  return <div className="dialog-backdrop" onMouseDown={() => { if (!busy) onClose() }}>
-    <section className="account-panel media-panel" role="dialog" aria-modal="true" aria-labelledby="media-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button className="dialog-close" disabled={busy} onClick={onClose} aria-label="关闭图片管理">×</button>
+  return <div className="page-section">
+    <section className="form-card media-panel" role="region" aria-labelledby="media-title" onMouseDown={(event) => event.stopPropagation()}>
       <span className="section-kicker">整理你的书籍</span><h2 id="media-title">图片管理</h2><p>{book.title}</p>
       <p className="account-hint">最多3张，每张5MB以内。第一张用作书架封面，可选择其他图片替换封面。</p>
       {loading ? <p role="status">正在读取图片…</p> : <div className="media-grid">{images.map((image, index) => <article className="media-item" key={image.id}>
