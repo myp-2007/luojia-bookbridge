@@ -1,62 +1,57 @@
 # 珞珈书桥 · Luojia BookBridge
 
-校园二手书交易与线下交接平台。当前交付面向小型比赛本机演示，四个学生账号和一个管理员账号可分别在不同浏览器或设备使用。
+一个可以在个人电脑上运行的校园二手书网站。支持真实注册和密码登录、搜索、发布、个人资料与头像、收藏、预约及双方交接确认。网页、API、数据库和图片都由你的电脑提供，不要求购买云服务器。
 
-## 本机演示
+## 打开网站
 
-需要已安装 Python 3.12+、Node.js 和 npm。在仓库根目录打开 PowerShell，首次运行
+Windows直接双击仓库根目录的 **start.cmd**。首次缺少工程依赖时自动安装（电脑需先安装Python 3.12+、Node.js及npm），之后构建网页、备份旧数据、执行数据库升级，再启动服务。保持窗口打开，浏览器访问 **http://localhost:8000**。
 
-```powershell
-./infra/start-demo.ps1 -Setup
-```
-
-以后运行
+也可以在PowerShell运行：
 
 ```powershell
-./infra/start-demo.ps1
+./infra/start-local.ps1
+# 如需重装依赖：
+./infra/start-local.ps1 -Setup
+# 修改端口：
+./infra/start-local.ps1 -Port 8080
 ```
 
-浏览器打开 <http://localhost:8000>。点击“我的”选择演示账号。小珞拥有初始化的教材，小桥、小书、小林可以预约，演示管理员处理反馈。每台设备或不同浏览器使用各自的 Cookie 会话，刷新页面会保留登录。
+先点“立即注册”，设置自己的账号和密码。登录页只有普通账号密码表单，不再提供五个演示账号。首次从主机localhost注册且尚无真实管理员的账号成为本机管理员，其他注册账号为普通用户；无默认通用密码。学校认证暂未接入，不显示假认证标识。
 
-启动脚本构建网页、执行 Alembic 迁移、幂等初始化数据，并在同一端口启动网页和 API。默认演示使用独立的 `apps/api/demo_bookbridge.db` SQLite 文件和 `storage/demo-uploads`。重启前备份保存在 `apps/api/backups`。PostgreSQL 配置仍在 `infra/docker-compose.yml` 中，本机少量演示可先使用 SQLite。
+其他设备连接同一可互访局域网，打开启动窗口列出的主机IP地址。主机需保持运行。不同设备、不同浏览器或浏览器配置使用独立账号；普通标签页共享当前登录。Ctrl+C停止服务，重新启动后保留账户、书籍、头像和交易。
 
-其他设备连接同一个可互访的 Wi-Fi，访问 `http://电脑的局域网IP:8000`。需提前实测校园网络是否隔离设备、Windows 是否允许访问该端口。现场也可以使用同一电脑的不同浏览器或独立浏览器配置演示。按 Ctrl+C 停止服务，数据保留。
+## 已实现
 
-完整操作与恢复步骤见 [本机演示指南](docs/LOCAL_DEMO.md)。任务分工见 [开发交接](docs/DEVELOPMENT_STATUS.md)。
+- 首页、发现、发布、记录、个人中心、详情、设置均为独立页面，支持网址直达、刷新和返回。
+- 注册、密码登录、8小时HttpOnly会话、退出、改密并撤销全部会话；登录失败限流；随机盐scrypt密码摘要。
+- 个人头像上传、性别、院系、简介、私密联系方式；个人发布、收藏和真实统计。
+- 书名、作者、出版社、版本、ISBN检索；支持“高数”“线代”等简称；价格/品相/笔记筛选、排序、分页。
+- 发布最多3张照片、完整资料编辑、上下架、相册、删除图片与设封面。
+- 预约、接受/拒绝、取消、双方交接确认、争议、举报和管理员审核及审计。
+- 免费赠书强制零元；书架和交易记录5秒同步；断线保留已读取内容并重试。
+- 真实图片识别任务与人工确认保存。现有本机AI配置保留，新环境未配置时手动录入，不回显假识别结果。
 
-## 当前能力
+旧样例书籍和历史数据保留；没有启用真实密码的旧账号不能接收新预约。真实交易应使用注册账号发布的书籍。普通启动不再初始化演示账号或自动追加样例。可选 `-SampleBooks` 仅显式导入带来源的浏览样例。
 
-- 演示账号登录、8小时会话、退出、个人昵称和自愿提供的联系方式。
-- 书籍发布、书名/作者/出版社搜索、分类、详情、图片上传与封面展示。
-- 我的发布、编辑、上下架，预约中和已完成书籍禁止编辑。
-- 买卖双方预约管理、接受/拒绝、取消、24小时待接受预约过期清理。
-- 书架与业务列表每5秒自动同步其他参与者的操作，断线保留数据并自动重试。
-- 线下交接二次确认、双方完成、幂等确认、争议冻结与管理员核实处理。
-- 预约接受后向交易对方展示主动设置的联系方式。
-- 反馈记录、举报处理和后台审计日志接口。
-- 本机启动、演示数据、数据库迁移和本地备份。
+## 数据和资源
 
-AI已具备持久化任务、状态轮询、超时恢复和人工确认保存，以及可配置的OpenAI兼容视觉接口适配器。默认模拟模式仅回显已有资料。真实服务需要配置模型与Key并完成实图验收，学校认证需要接入资源。地图路线、正式公益捐赠审核和课程语义推荐仍为后续任务，免费赠书分类可通过当前书籍预约流程演示。
+为兼容旧数据，继续使用 `apps/api/demo_bookbridge.db` 和 `apps/api/storage/demo-uploads`（包含书籍图片与头像）。这些历史文件名不表示模拟数据。启动前备份位于 `apps/api/backups`，以上数据及本机.env均不进入Git。
 
-## 开发与测试
+React + TypeScript + Vite，FastAPI + SQLAlchemy + Alembic，模块化单体。本机默认SQLite；PostgreSQL保留为可选开发路径。无Redis、微服务或额外付费存储。账号与资料接口合同见[真实账户合同](docs/api/LOCAL_ACCOUNTS_CONTRACT.md)，完整合同见[OpenAPI](docs/api/openapi.yaml)。
+
+[使用与恢复指南](docs/LOCAL_USAGE.md) · [验收清单](docs/ACCEPTANCE.md) · [开发状态](docs/DEVELOPMENT_STATUS.md) · [素材来源](apps/web/src/assets/SOURCES.md)
+
+## 开发检查
 
 ```powershell
 cd apps/api
-.venv/Scripts/python.exe -m pytest -q
+./.venv/Scripts/python.exe -m pytest -q
 cd ../web
-npm ci
-npm run build
-npm run lint
-npm run test:e2e
+npm.cmd run build
+npm.cmd run lint
+npm.cmd run test:e2e
 ```
 
-浏览器测试使用本机 Microsoft Edge，启动独立 FastAPI/SQLite 测试实例与 Vite，通过真实 HTTP 验证用户操作。测试数据库和上传目录位于临时目录，不使用演示数据。Playwright 启动命令当前按 Windows 路径配置。
+浏览器测试使用Microsoft Edge、独立临时SQLite与上传目录。通过真实注册和密码登录操作网页，测试不修改实际站点数据、不调用付费AI。单独前端开发可使用 `npm.cmd run dev`，代理/API与图片到本机8000端口；已移除离线Mock网页模式。
 
-前端单独开发时运行 `npm run dev`，Vite 代理 `/api` 和 `/storage` 到本机8000端口。`VITE_API_BASE_URL` 默认 `/api/v1`，`VITE_USE_API=false` 可显式切到离线界面预览。
-
-技术基线为 React + TypeScript + Vite、FastAPI + SQLAlchemy + Alembic、PostgreSQL，采用模块化单体架构。首版在线下付款和交接。
-
-开始修改前请阅读 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [技术架构方案](珞珈书桥技术架构方案.md)。
-
-
-2026-11-08：新增15本真实封面样例、图片相册管理、管理员书籍限制与审计界面、零元赠书闭环。所有样例图已本地保存，来源见[样例说明](seed/demo-books/README.md)，当前功能和完整操作验收见[验收清单](docs/ACCEPTANCE.md)。学校认证暂缓，默认继续使用本机演示账号。
+开始修改前请读[AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md)和[技术架构方案](珞珈书桥技术架构方案.md)。
