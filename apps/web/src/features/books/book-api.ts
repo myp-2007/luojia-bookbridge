@@ -11,6 +11,9 @@ export interface BookRecognition {
 }
 
 interface BookApiRecord {
+  isbn?: string | null
+  isFavorite?: boolean
+  sellerActive?: boolean
   isSuspended?: boolean
   moderationReason?: string | null
   id: string
@@ -69,6 +72,7 @@ export async function createBook(book: Book): Promise<Book> {
   const record = await apiRequest<BookApiRecord>('/books', {
     method: 'POST',
     body: JSON.stringify({
+      isbn: book.isbn,
       title: book.title,
       author: book.author === '待补充' ? null : book.author,
       publisher: book.publisher === '待补充' ? null : book.publisher,
@@ -97,13 +101,13 @@ export async function uploadBookImage(bookId: string, file: File): Promise<void>
   await apiRequest(`/books/${bookId}/images`, { method: 'POST', body: formData })
 }
 
-export async function recognizeBook(bookId: string): Promise<BookRecognition> {
-  return apiRequest<BookRecognition>(`/books/${bookId}/ai-extract`, { method: 'POST' })
-}
-
 function toBook(book: BookApiRecord): Book {
   return {
     id: book.id,
+    isbn: book.isbn,
+    isFavorite: book.isFavorite ?? false,
+    sellerActive: book.sellerActive ?? true,
+    createdAt: book.createdAt,
     sellerId: book.sellerId,
     coverUrl: book.coverUrl ? new URL(book.coverUrl, new URL(API_BASE_URL, window.location.origin)).href : undefined,
     description: book.description ?? undefined,
@@ -125,10 +129,6 @@ function toBook(book: BookApiRecord): Book {
   }
 }
 
-export async function fetchMyBooks(): Promise<Book[]> {
-  const result = await apiRequest<BookListResponse>('/books/mine?page_size=100')
-  return result.items.map(toBook)
-}
 export async function fetchAdminBooks(query: string, suspended: string, page: number) {
   const params = new URLSearchParams({ q: query, page: String(page), page_size: '10' })
   if (suspended) params.set('suspended', suspended)
@@ -143,6 +143,7 @@ export async function moderateBook(id: string, suspended: boolean, reason: strin
 export async function updateBook(book: Book): Promise<Book> {
   const result = await apiRequest<BookApiRecord>(`/books/${book.id}`, {
     method: 'PATCH', body: JSON.stringify({
+      isbn: book.isbn,
       title: book.title, author: book.author, publisher: book.publisher, edition: book.edition,
       priceCents: Math.round(book.price * 100), condition: book.condition,
       hasNotes: book.tags.includes('有笔记'), description: book.description, category: book.category, pickupPoint: book.pickupPoint,
@@ -164,3 +165,10 @@ export function createAITask(bookId: string): Promise<AITask> {
 export function fetchAITask(bookId: string, id: string): Promise<AITask> {
   return apiRequest(`/books/${bookId}/ai-tasks/${id}`)
 }
+
+export async function fetchPersonalBooks(kind: 'mine' | 'favorites' | string, page: number) {
+  const path = kind === 'mine' ? '/books/mine' : kind === 'favorites' ? '/me/favorites' : `/users/${kind}/books`
+  const response = await apiRequest<BookListResponse>(`${path}?page=${page}&page_size=12`)
+  return { ...response, items: response.items.map(toBook) }
+}
+export function toggleFavorite(id: string, saved: boolean) { return apiRequest<void>(`/books/${id}/favorite`, { method: saved ? 'DELETE' : 'POST' }) }

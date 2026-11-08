@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Luojia BookBridge API
-  version: 0.2.0
-  description: Local competition demo using session cookies. Legacy identity headers
-    are disabled by default.
+  version: 0.3.0
+  description: Local campus book marketplace with real password accounts, profiles
+    and persistent SQLite/uploads. Normal startup disables legacy development authentication.
 paths:
   /api/v1/health:
     get:
@@ -21,54 +21,43 @@ paths:
                   type: string
                 type: object
                 title: Response Health Api V1 Health Get
-        '401':
-          description: 请先登录
+        '400':
+          description: 输入或业务校验失败
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
   /api/v1/books:
     get:
       tags:
@@ -112,41 +101,90 @@ paths:
           title: Page Size
       - name: min_price_cents
         in: query
+        required: false
         schema:
-          type: integer
-          minimum: 0
-          maximum: 10000000
+          anyOf:
+          - type: integer
+            maximum: 10000000
+            minimum: 0
+          - type: 'null'
+          title: Min Price Cents
       - name: max_price_cents
         in: query
+        required: false
         schema:
-          type: integer
-          minimum: 0
-          maximum: 10000000
+          anyOf:
+          - type: integer
+            maximum: 10000000
+            minimum: 0
+          - type: 'null'
+          title: Max Price Cents
       - name: condition
         in: query
+        required: false
         schema:
-          type: string
-          maxLength: 40
+          anyOf:
+          - type: string
+            maxLength: 40
+          - type: 'null'
+          title: Condition
       - name: has_notes
         in: query
+        required: false
         schema:
-          type: boolean
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Has Notes
       - name: available_only
         in: query
+        required: false
         schema:
           type: boolean
           default: false
+          title: Available Only
       - name: sort
         in: query
-        description: 默认有关键词按匹配度，无关键词按最新发布。价格相同时按发布时间和 ID 排序。
+        required: false
         schema:
-          type: string
           enum:
           - relevance
           - newest
           - price_asc
           - price_desc
+          type: string
           default: relevance
+          title: Sort
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
       responses:
         '200':
           description: Successful Response
@@ -154,77 +192,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookListResponse'
-              example:
-                items: []
-                page: 1
-                pageSize: 20
-                total: 0
-        '400':
-          description: 价格区间无效或分类不存在
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_400
-                message: 最低价不能高于最高价
-                details: {}
-                requestId: example-request-id
-                detail: 最低价不能高于最高价
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security: []
     post:
       tags:
       - books
@@ -239,6 +243,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -247,6 +254,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -269,59 +279,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/mine:
     get:
       tags:
@@ -354,6 +348,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -362,6 +359,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -378,59 +378,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookListResponse'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}:
     patch:
       tags:
@@ -453,6 +437,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -461,6 +448,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -483,59 +473,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
     get:
       tags:
       - books
@@ -549,6 +523,36 @@ paths:
           type: string
           format: uuid
           title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
       responses:
         '200':
           description: Successful Response
@@ -557,59 +561,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security: []
   /api/v1/books/{book_id}/offline:
     post:
       tags:
@@ -632,6 +619,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -640,6 +630,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -656,59 +649,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}/images:
     get:
       tags:
@@ -734,59 +711,42 @@ paths:
                   $ref: '#/components/schemas/BookImageRead'
                 title: Response Read Book Images Api V1 Books  Book Id  Images Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security: []
     post:
       tags:
       - books
@@ -808,6 +768,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -816,6 +779,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -838,59 +804,237 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookImageRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
+  /api/v1/books/{book_id}/images/{image_id}:
+    delete:
+      tags:
+      - books
+      summary: Delete Book Image
+      operationId: delete_book_image_api_v1_books__book_id__images__image_id__delete
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: image_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Image Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
+      security:
+      - sessionCookie: []
+  /api/v1/books/{book_id}/images/{image_id}/cover:
+    post:
+      tags:
+      - books
+      summary: Set Cover
+      operationId: set_cover_api_v1_books__book_id__images__image_id__cover_post
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: image_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Image Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookImageRead'
+                title: Response Set Cover Api V1 Books  Book Id  Images  Image Id  Cover
+                  Post
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}/publish:
     post:
       tags:
@@ -913,6 +1057,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -921,6 +1068,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -937,59 +1087,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}/ai-extract:
     post:
       tags:
@@ -1012,6 +1146,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1020,6 +1157,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1036,59 +1176,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/BookRecognitionRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
+      deprecated: true
+      description: Legacy development-only route. Normal startup disables this entry.
   /api/v1/books/{book_id}/reservations:
     post:
       tags:
@@ -1111,6 +1237,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1119,6 +1248,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1141,59 +1273,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/mine:
     get:
       tags:
@@ -1209,6 +1325,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1217,6 +1336,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1236,59 +1358,43 @@ paths:
                   $ref: '#/components/schemas/ReservationRead'
                 title: Response Read My Reservations Api V1 Reservations Mine Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/confirm:
     post:
       tags:
@@ -1311,6 +1417,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1319,6 +1428,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1335,59 +1447,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/reject:
     post:
       tags:
@@ -1410,6 +1506,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1418,6 +1517,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1434,59 +1536,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/cancel:
     post:
       tags:
@@ -1509,6 +1595,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1517,6 +1606,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1533,59 +1625,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/buyer-confirm:
     post:
       tags:
@@ -1608,6 +1684,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1616,6 +1695,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1632,59 +1714,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/seller-confirm:
     post:
       tags:
@@ -1707,6 +1773,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1715,6 +1784,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1731,59 +1803,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/dispute:
     post:
       tags:
@@ -1806,6 +1862,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1814,6 +1873,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1830,59 +1892,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReservationRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reservations/{reservation_id}/contact:
     get:
       tags:
@@ -1905,6 +1951,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -1913,6 +1962,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -1932,59 +1984,43 @@ paths:
                 title: Response Contact Api V1 Reservations  Reservation Id  Contact
                   Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/pickup-points:
     get:
       tags:
@@ -2000,54 +2036,43 @@ paths:
                 additionalProperties: true
                 type: object
                 title: Response Points Api V1 Pickup Points Get
-        '401':
-          description: 请先登录
+        '400':
+          description: 输入或业务校验失败
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
   /api/v1/reports:
     post:
       tags:
@@ -2063,6 +2088,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2071,6 +2099,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2093,59 +2124,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReportRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reports/mine:
     get:
       tags:
@@ -2161,6 +2176,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2169,6 +2187,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2188,59 +2209,43 @@ paths:
                   $ref: '#/components/schemas/ReportRead'
                 title: Response Read My Reports Api V1 Reports Mine Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reports/admin:
     get:
       tags:
@@ -2256,6 +2261,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2264,6 +2272,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2283,59 +2294,43 @@ paths:
                   $ref: '#/components/schemas/ReportRead'
                 title: Response Read All Reports Api V1 Reports Admin Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/admin/audit-logs:
     get:
       tags:
@@ -2350,14 +2345,46 @@ paths:
           type: integer
           minimum: 1
           default: 1
+          title: Page
       - name: page_size
         in: query
         required: false
         schema:
           type: integer
-          minimum: 1
           maximum: 100
+          minimum: 1
           default: 20
+          title: Page Size
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
       responses:
         '200':
           description: Successful Response
@@ -2368,59 +2395,43 @@ paths:
                 additionalProperties: true
                 title: Response Audit Api V1 Admin Audit Logs Get
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/reports/admin/{report_id}/resolve:
     post:
       tags:
@@ -2443,6 +2454,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2451,6 +2465,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2473,59 +2490,186 @@ paths:
               schema:
                 $ref: '#/components/schemas/ReportRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
+  /api/v1/auth/register:
+    post:
+      tags:
+      - auth
+      summary: Register
+      operationId: register_api_v1_auth_register_post
+      parameters:
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterCreate'
+            example:
+              username: luojia
+              password: <choose-your-own-password>
+              nickname: 小珞
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
+  /api/v1/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Password Login
+      operationId: password_login_api_v1_auth_login_post
+      parameters:
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+            example:
+              username: luojia
+              password: <your-password>
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '429':
+          description: 20 failed attempts per client IP in 15 minutes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
   /api/v1/auth/demo-accounts:
     get:
       tags:
@@ -2542,60 +2686,51 @@ paths:
                   $ref: '#/components/schemas/DemoAccountRead'
                 type: array
                 title: Response Accounts Api V1 Auth Demo Accounts Get
-        '401':
-          description: 请先登录
+        '400':
+          description: 输入或业务校验失败
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
+      deprecated: true
+      description: Legacy development-only route. Normal startup disables this entry.
   /api/v1/auth/dev-login:
     post:
       tags:
       - auth
-      summary: Login
-      operationId: login_api_v1_auth_dev_login_post
+      summary: Dev Login
+      operationId: dev_login_api_v1_auth_dev_login_post
       parameters:
       - name: bookbridge_session
         in: cookie
@@ -2611,8 +2746,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Login'
-            example:
-              userId: demo-buyer
       responses:
         '200':
           description: Successful Response
@@ -2620,66 +2753,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserRead'
-              example:
-                id: demo-buyer
-                nickname: 小桥
-                role: student
-                college: 演示学院
-                contact: null
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security: []
+      deprecated: true
+      description: Legacy development-only route. Normal startup disables this entry.
   /api/v1/auth/logout:
     post:
       tags:
@@ -2700,64 +2812,128 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                title: Response Logout Api V1 Auth Logout Post
+              schema: {}
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security: []
+  /api/v1/auth/password:
+    post:
+      tags:
+      - auth
+      summary: Change Password
+      operationId: change_password_api_v1_auth_password_post
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChange'
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
   /api/v1/me:
     get:
       tags:
@@ -2773,6 +2949,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2781,6 +2960,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2797,59 +2979,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
     patch:
       tags:
       - auth
@@ -2864,6 +3030,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2872,6 +3041,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2886,6 +3058,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/Profile'
+            example:
+              nickname: 小珞
+              gender: female
+              bio: 喜欢数学与旧书
+              college: 数学与统计学院
       responses:
         '200':
           description: Successful Response
@@ -2894,59 +3071,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}/ai-tasks:
     post:
       tags:
@@ -2969,6 +3130,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -2977,6 +3141,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -2993,59 +3160,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
+      security:
+      - sessionCookie: []
   /api/v1/books/{book_id}/ai-tasks/{task_id}:
     get:
       tags:
@@ -3075,6 +3226,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -3083,6 +3237,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -3099,184 +3256,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskRead'
         '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-        '401':
-          description: 请先登录
+          description: 字段无效
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_401
-                message: 请先登录
-                details: {}
-                requestId: example-request-id
-                detail: 请先登录
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
         '403':
           description: 权限不足
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_403
-                message: 权限不足
-                details: {}
-                requestId: example-request-id
-                detail: 权限不足
         '404':
-          description: 记录不存在
+          description: 对象不存在
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_404
-                message: 记录不存在
-                details: {}
-                requestId: example-request-id
-                detail: 记录不存在
         '409':
-          description: 当前状态不允许操作
+          description: 账号重复或业务状态冲突
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-              example:
-                code: HTTP_409
-                message: 当前状态不允许操作
-                details: {}
-                requestId: example-request-id
-                detail: 当前状态不允许操作
-  /api/v1/books/{book_id}/images/{image_id}:
-    delete:
-      tags:
-      - books
-      summary: 删除图片，封面删除后顺延。数据库提交后清理文件。
-      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
-      parameters:
-      - name: book_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Book Id
-      - name: image_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Image Id
-      - name: x-user-id
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-User-Id
-      - name: x-role
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Role
-      - name: bookbridge_session
-        in: cookie
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Bookbridge Session
-      responses:
-        '204':
-          description: Successful Response
-        '401': &id001
-          description: 请先登录
-        '403': &id002
-          description: 权限不足
-        '404': &id003
-          description: 书籍或图片不存在
-        '409': &id004
-          description: 状态不允许或识别任务进行中
-        '422': &id005
-          description: 输入无效
-      operationId: delete_book_image_api_v1_books__book_id__images__image_id__delete
-  /api/v1/books/{book_id}/images/{image_id}/cover:
-    post:
-      tags:
-      - books
-      summary: 设置封面并返回有序图片列表。
-      description: 发布者Cookie权限；仅可编辑状态，受管理限制或90秒内AI任务活跃时返回409。
-      parameters:
-      - name: book_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Book Id
-      - name: image_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Image Id
-      - name: x-user-id
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-User-Id
-      - name: x-role
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: X-Role
-      - name: bookbridge_session
-        in: cookie
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Bookbridge Session
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BookImageRead'
-        '401': *id001
-        '403': *id002
-        '404': *id003
-        '409': *id004
-        '422': *id005
-      operationId: set_cover_api_v1_books__book_id__images__image_id__cover_post
+      security:
+      - sessionCookie: []
   /api/v1/admin/books:
     get:
       tags:
       - admin
-      summary: 管理员分页查询所有书籍
-      description: 管理员Cookie权限，q匹配书名、作者或发布者ID。
+      summary: Read Books
+      operationId: read_books_api_v1_admin_books_get
       parameters:
       - name: q
         in: query
@@ -3319,6 +3341,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -3327,6 +3352,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -3342,18 +3370,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookListResponse'
-        '401': *id001
-        '403': *id002
-        '404': *id003
-        '409': *id004
-        '422': *id005
-      operationId: read_books_api_v1_admin_books_get
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      description: 管理员Cookie权限，q匹配书名、作者或发布者ID。
+      security:
+      - sessionCookie: []
   /api/v1/admin/books/{book_id}/moderation:
     post:
       tags:
       - admin
-      summary: 限制或解除书籍限制并记审计日志
-      description: 管理员Cookie权限。限制隐藏书架并阻止新预约，进行中交易和历史保留。解除不自动上架。
+      summary: Moderate
+      operationId: moderate_api_v1_admin_books__book_id__moderation_post
       parameters:
       - name: book_id
         in: path
@@ -3370,6 +3431,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: x-role
         in: header
         required: false
@@ -3378,6 +3442,9 @@ paths:
           - type: string
           - type: 'null'
           title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
       - name: bookbridge_session
         in: cookie
         required: false
@@ -3394,7 +3461,7 @@ paths:
               $ref: '#/components/schemas/ModerationCreate'
             example:
               suspended: true
-              reason: 图片与描述不符，请核实
+              reason: 图片需要核实
       responses:
         '200':
           description: Successful Response
@@ -3402,14 +3469,732 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BookRead'
-        '401': *id001
-        '403': *id002
-        '404': *id003
-        '409': *id004
-        '422': *id005
-      operationId: moderate_api_v1_admin_books__book_id__moderation_post
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      description: 管理员Cookie权限。限制隐藏书架并阻止新预约，进行中交易和历史保留。解除不自动上架。
+      security:
+      - sessionCookie: []
+  /api/v1/me/avatar:
+    post:
+      tags:
+      - profiles
+      summary: Upload Avatar
+      operationId: upload_avatar_api_v1_me_avatar_post
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_upload_avatar_api_v1_me_avatar_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRead'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
+    delete:
+      tags:
+      - profiles
+      summary: Delete Avatar
+      operationId: delete_avatar_api_v1_me_avatar_delete
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
+  /api/v1/me/stats:
+    get:
+      tags:
+      - profiles
+      summary: Stats
+      operationId: stats_api_v1_me_stats_get
+      parameters:
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
+  /api/v1/users/{user_id}:
+    get:
+      tags:
+      - profiles
+      summary: Public Profile
+      operationId: public_profile_api_v1_users__user_id__get
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserRead'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
+  /api/v1/users/{user_id}/books:
+    get:
+      tags:
+      - profiles
+      summary: Public Books
+      operationId: public_books_api_v1_users__user_id__books_get
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: User Id
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 12
+          title: Page Size
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security: []
+  /api/v1/me/favorites:
+    get:
+      tags:
+      - profiles
+      summary: Favorites
+      operationId: favorites_api_v1_me_favorites_get
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 12
+          title: Page Size
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookListResponse'
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
+  /api/v1/books/{book_id}/favorite:
+    post:
+      tags:
+      - profiles
+      summary: Favorite
+      operationId: favorite_api_v1_books__book_id__favorite_post
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
+    delete:
+      tags:
+      - profiles
+      summary: Unfavorite
+      operationId: unfavorite_api_v1_books__book_id__favorite_delete
+      parameters:
+      - name: book_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Book Id
+      - name: x-user-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: x-role
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Role
+        deprecated: true
+        description: Only honored in explicitly enabled legacy development tests;
+          ignored by normal local startup.
+      - name: bookbridge_session
+        in: cookie
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bookbridge Session
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: 字段无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '400':
+          description: 输入或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '401':
+          description: 请登录或检查账号密码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '403':
+          description: 权限不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '404':
+          description: 对象不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '409':
+          description: 账号重复或业务状态冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+      security:
+      - sessionCookie: []
 components:
   schemas:
+    Body_upload_avatar_api_v1_me_avatar_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_upload_avatar_api_v1_me_avatar_post
     Body_upload_book_image_api_v1_books__book_id__images_post:
       properties:
         file:
@@ -3452,6 +4237,12 @@ components:
             maxLength: 80
           - type: 'null'
           title: Edition
+        isbn:
+          anyOf:
+          - type: string
+            maxLength: 32
+          - type: 'null'
+          title: Isbn
         price:
           type: number
           maximum: 100000.0
@@ -3580,6 +4371,11 @@ components:
           - type: string
           - type: 'null'
           title: Edition
+        isbn:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Isbn
         price:
           type: number
           title: Price
@@ -3623,6 +4419,14 @@ components:
           - type: string
           - type: 'null'
           title: Moderationreason
+        isFavorite:
+          type: boolean
+          title: Isfavorite
+          default: false
+        sellerActive:
+          type: boolean
+          title: Selleractive
+          default: true
         createdAt:
           type: string
           format: date-time
@@ -3682,6 +4486,27 @@ components:
       - completed
       - offline
       title: BookStatus
+    Credentials:
+      properties:
+        username:
+          type: string
+          maxLength: 32
+          minLength: 3
+          pattern: ^[A-Za-z0-9_.-]+$
+          title: Username
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+          format: password
+          writeOnly: true
+      additionalProperties: false
+      type: object
+      required:
+      - username
+      - password
+      title: Credentials
     DemoAccountRead:
       properties:
         id:
@@ -3722,12 +4547,50 @@ components:
       required:
       - userId
       title: Login
+    ModerationCreate:
+      properties:
+        suspended:
+          type: boolean
+          title: Suspended
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Reason
+      type: object
+      required:
+      - suspended
+      - reason
+      title: ModerationCreate
+    PasswordChange:
+      properties:
+        currentPassword:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Currentpassword
+          format: password
+          writeOnly: true
+        newPassword:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Newpassword
+          format: password
+          writeOnly: true
+      type: object
+      required:
+      - currentPassword
+      - newPassword
+      title: PasswordChange
     Profile:
       properties:
         nickname:
-          type: string
-          maxLength: 80
-          minLength: 1
+          anyOf:
+          - type: string
+            maxLength: 80
+            minLength: 1
+          - type: 'null'
           title: Nickname
         contact:
           anyOf:
@@ -3735,10 +4598,58 @@ components:
             maxLength: 200
           - type: 'null'
           title: Contact
+        college:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: College
+        gender:
+          anyOf:
+          - type: string
+            enum:
+            - undisclosed
+            - male
+            - female
+            - other
+          - type: 'null'
+          title: Gender
+        bio:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Bio
+      additionalProperties: false
+      type: object
+      title: Profile
+    PublicUserRead:
+      properties:
+        id:
+          type: string
+          title: Id
+        nickname:
+          type: string
+          title: Nickname
+        college:
+          type: string
+          title: College
+        bio:
+          type: string
+          title: Bio
+        avatarUrl:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Avatarurl
       type: object
       required:
+      - id
       - nickname
-      title: Profile
+      - college
+      - bio
+      - avatarUrl
+      title: PublicUserRead
     RecognitionFieldRead:
       properties:
         value:
@@ -3754,6 +4665,33 @@ components:
       - value
       - confidence
       title: RecognitionFieldRead
+    RegisterCreate:
+      properties:
+        username:
+          type: string
+          maxLength: 32
+          minLength: 3
+          pattern: ^[A-Za-z0-9_.-]+$
+          title: Username
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+          format: password
+          writeOnly: true
+        nickname:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Nickname
+          default: 小珞
+      additionalProperties: false
+      type: object
+      required:
+      - username
+      - password
+      title: RegisterCreate
     ReportCreate:
       properties:
         targetType:
@@ -4015,6 +4953,11 @@ components:
         id:
           type: string
           title: Id
+        username:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Username
         nickname:
           type: string
           title: Nickname
@@ -4032,6 +4975,19 @@ components:
           - type: string
           - type: 'null'
           title: Contact
+        gender:
+          type: string
+          title: Gender
+          default: undisclosed
+        bio:
+          type: string
+          title: Bio
+          default: ''
+        avatarUrl:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Avatarurl
       type: object
       required:
       - id
@@ -4078,22 +5034,19 @@ components:
           type: string
         message:
           type: string
-        details: {}
+        details:
+          anyOf:
+          - type: object
+            additionalProperties: true
+          - type: array
+            items:
+              type: object
+              additionalProperties: true
         requestId:
           type: string
         detail: {}
-    ModerationCreate:
-      properties:
-        suspended:
-          type: boolean
-          title: Suspended
-        reason:
-          type: string
-          maxLength: 500
-          minLength: 1
-          title: Reason
-      type: object
-      required:
-      - suspended
-      - reason
-      title: ModerationCreate
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: bookbridge_session

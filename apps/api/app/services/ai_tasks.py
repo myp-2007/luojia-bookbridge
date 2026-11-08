@@ -95,11 +95,15 @@ def run_task(task_id: UUID) -> None:
         try:
             settings = get_settings()
             if settings.ai_provider == 'mock':
+                if settings.environment != 'test' and not settings.allow_dev_auth:
+                    raise ValueError('AI识别尚未配置，可以先手动填写书籍资料')
                 candidate = MockBookRecognitionProvider().recognize(book)
                 result = {name: vars(getattr(candidate, name)) for name in ['title', 'author', 'publisher', 'edition']}
                 result.update(warnings=candidate.warnings, provider='mock')
             elif settings.ai_provider == 'openai-compatible':
                 result = external_recognition(book, images)
+            elif settings.ai_provider == 'disabled':
+                raise ValueError('AI识别尚未配置，可以先手动填写书籍资料')
             else:
                 raise ValueError('不支持的AI_PROVIDER配置')
             task = db.get(AITask, task_id)

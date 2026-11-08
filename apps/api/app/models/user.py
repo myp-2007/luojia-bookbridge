@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID, uuid4
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -10,9 +10,22 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(80), primary_key=True)
     nickname: Mapped[str] = mapped_column(String(80))
     role: Mapped[str] = mapped_column(String(20), default='student')
-    college: Mapped[str] = mapped_column(String(120), default='演示学院')
+    college: Mapped[str] = mapped_column(String(120), default='')
     contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_demo: Mapped[bool] = mapped_column(default=False)
+    username: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    gender: Mapped[str] = mapped_column(String(20), default='undisclosed', server_default='undisclosed')
+    bio: Mapped[str] = mapped_column(String(500), default='', server_default='')
+    avatar_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuthThrottle(Base):
+    __tablename__ = 'auth_throttles'
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    window_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class UserSession(Base):

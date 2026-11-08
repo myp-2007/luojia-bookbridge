@@ -1,5 +1,7 @@
 # 本机比赛演示接口增量合同
 
+> 历史合同：2026-11-09起以[真实账户与页面合同](LOCAL_ACCOUNTS_CONTRACT.md)和当前OpenAPI为准。正常启动关闭下文演示登录入口，保留旧接口仅供显式开发测试。
+
 本轮由 AI 维护者实现前后端和本机演示集成，原接口保持兼容。金额新增 priceCents（整数分），旧 price（元）继续返回。错误新增 code/message/details/requestId，并保留旧 detail。所有认证写操作使用 HttpOnly 会话 Cookie。测试身份请求头仅在显式 ALLOW_LEGACY_HEADERS=true 的开发测试中兼容。
 
 | 方法 | 路径（前缀 /api/v1） | 权限 | 成功行为 |

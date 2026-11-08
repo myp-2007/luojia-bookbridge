@@ -1,226 +1,99 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import './App.css'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { navigate, useLocation } from './lib/router'
+import { Link } from './components/Link'
 import { useLiveRefresh } from './lib/use-live-refresh'
-import { BookCard } from './features/books/BookCard'
-import { BookDetailDialog } from './features/books/BookDetailDialog'
-import { BookFilterForm } from './features/books/BookFilterForm'
-import { PublishBookDialog } from './features/books/PublishBookDialog'
-import { createBook, createReservation, DEFAULT_BOOK_FILTERS, fetchBooks, uploadBookImage, type BookFilters } from './features/books/book-api'
-import { AIRecognitionDialog } from './features/ai/AIRecognitionDialog'
-import { MyReservationsDialog } from './features/reservations/MyReservationsDialog'
-import { ReportDialog } from './features/reports/ReportDialog'
+import { Empty, ErrorNotice, Icon, PageHeader } from './components/ui'
+import { SessionContext, useSession } from './features/auth/session'
+import { getMe, setSignedInId, type User } from './features/auth/auth-api'
+import { AuthPage } from './features/auth/AuthPage'
+import { HomePage, CatalogPage, PersonalBooksPage } from './features/books/CatalogPages'
+import { BookDetailPage } from './features/books/BookDetailPage'
+import { createBook, fetchBook, updateBook, uploadBookImage } from './features/books/book-api'
+import { PublishBookForm } from './features/books/PublishBookForm'
+import { BookImagesPage } from './features/books/BookImagesPage'
+import { AIRecognitionPage } from './features/ai/AIRecognitionPage'
+import { ReservationsPage } from './features/reservations/ReservationsPage'
+import { BookReportPage } from './features/reports/BookReportPage'
 import { createReport } from './features/reports/report-api'
-import { mockBooks } from './data/mock-books'
-import { AccountDialog } from './features/account/AccountDialog'
-import { getMe, login, logout, setSignedInId, type User } from './features/auth/auth-api'
+import { ReportsPage } from './features/reports/ReportsPage'
+import { EditProfilePage, PasswordPage, ProfilePage, SettingsPage } from './features/account/ProfilePages'
+import { AdminWorkspace } from './features/account/AdminWorkspace'
 import type { Book } from './types/books'
+import './App.css'
 
-type Category = 'all' | 'textbook' | 'reading' | 'donation'
-
-const categoryLabels: Record<Category, string> = { all: '全部', textbook: '教材交易', reading: '课外读物', donation: '免费赠书' }
+const sectionTitles: Record<string,string> = { '/discover': '发现好书', '/publish': '发布书籍', '/records': '预约与交接', '/me': '我的书桥', '/me/edit': '编辑个人资料', '/me/books': '我的发布', '/me/favorites': '我的收藏', '/me/reports': '我的反馈', '/settings': '账户设置', '/settings/password': '修改密码', '/admin': '书籍与操作管理', '/admin/reports': '处理举报与争议', '/about': '关于珞珈书桥' }
+const actionTitles: Record<string,string> = { edit: '编辑书籍', images: '管理书籍图片', recognize: 'AI识别书籍', report: '反馈书籍问题' }
 
 function App() {
-  const [books, setBooks] = useState<Book[]>(import.meta.env.VITE_USE_API === 'false' ? mockBooks : [])
-  const [query, setQuery] = useState('')
-  const [filters, setFilters] = useState<BookFilters>(DEFAULT_BOOK_FILTERS)
-  const [page, setPage] = useState(1)
-  const [catalogMeta, setCatalogMeta] = useState({ total: 0, pageSize: 12 })
-  const [category, setCategory] = useState<Category>('all')
-  const [activeTab, setActiveTab] = useState('首页')
-  const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
-  const [showPublish, setShowPublish] = useState(false)
-  const [showReservations, setShowReservations] = useState(false)
-  const [reportBookId, setReportBookId] = useState<string | null>(null)
-  const [aiBookId, setAiBookId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const [catalogLoading, setCatalogLoading] = useState(import.meta.env.VITE_USE_API !== 'false')
-  const [lastSync, setLastSync] = useState<string | null>(null)
-  const [reserving, setReserving] = useState(false)
-  const reserveLock = useRef(false)
-  const [apiError, setApiError] = useState<string | null>(null)
-  const useApi = import.meta.env.VITE_USE_API !== 'false'
-  const [user, setUser] = useState<User | null>(null)
-  const [showAccount, setShowAccount] = useState(false)
-  const [catalogRevision, setCatalogRevision] = useState(0)
-
+  const location = useLocation()
+  const separator = location.indexOf('?')
+  const path = separator < 0 ? location : location.slice(0, separator)
+  const rawSearch = separator < 0 ? '' : location.slice(separator + 1)
+  const params = new URLSearchParams(rawSearch)
+  const parts = path.split('/').filter(Boolean)
+  const [user, setCurrentUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState('')
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const setUser = useCallback((value: User | null) => { setCurrentUser(value); setSignedInId(value?.id ?? '') }, [])
+  const notice = useCallback((message: string) => { clearTimeout(timer.current); setToast(message); timer.current = setTimeout(() => setToast(''), 5000) }, [setToast])
   useEffect(() => {
-    if (!useApi) return
     let active = true
-    getMe().then((current) => {
-      if (active) { setUser(current); setSignedInId(current.id) }
-    }).catch(() => undefined)
-    const expired = () => { setUser(null); setSignedInId('') }
+    const expired = () => setUser(null)
     window.addEventListener('session-expired', expired)
-    return () => { active = false; window.removeEventListener('session-expired', expired) }
-  }, [useApi])
-
-  function needLogin(action: () => void) {
-    if (useApi && !user) { setShowAccount(true); return }
-    action()
+    getMe().then((current) => { if (active) setUser(current) }).catch(() => {}).finally(() => { if (active) setLoading(false) })
+    return () => { active = false; window.removeEventListener('session-expired', expired); clearTimeout(timer.current) }
+  }, [setUser])
+  const protectedPage = path.startsWith('/me') || path.startsWith('/settings') || path.startsWith('/admin') || path === '/publish' || path === '/records' || (parts[0] === 'books' && parts.length > 2)
+  useEffect(() => { if (!loading && protectedPage && !user) navigate('/login?next=' + encodeURIComponent(location), true) }, [loading, protectedPage, user, location])
+  const title = parts[0] === 'books' ? actionTitles[parts[2]] ?? '书籍详情' : parts[0] === 'users' ? '书友主页' : sectionTitles[path] ?? '珞珈书桥'
+  useEffect(() => { document.title = title + ' · 珞珈书桥' }, [title])
+  const authPage = path === '/login' || path === '/register'
+  const focusPage = authPage || path === '/publish' || (parts[0] === 'books') || path === '/me/edit' || path === '/settings/password'
+  async function publish(book: Book, files: File[] = []) {
+    const result = await createBook(book)
+    let failed = false
+    for (const file of files) { try { await uploadBookImage(result.id, file) } catch { failed = true; break } }
+    notice(failed ? '书籍已发布，部分图片未完成上传，可在图片管理中补传。' : '发布成功，其他书友现在可以看到你的书了')
+    if (window.location.pathname === '/publish') navigate(`/books/${result.id}${failed ? '/images' : ''}`, true)
   }
-  function refreshBooks() { setCatalogRevision((value) => value + 1) }
-
-
-  const selectedBook = books.find((book) => book.id === selectedBookId) ?? null
-
-  const syncCatalog = useCallback(async (isCurrent: () => boolean) => {
-    try {
-      const result = await fetchBooks(query.trim(), category, filters, page)
-      if (isCurrent()) {
-        const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize))
-        if (page > lastPage) {
-          setPage(lastPage)
-          return
-        }
-        setBooks(result.items)
-        setCatalogMeta({ total: result.total, pageSize: result.pageSize })
-        setApiError(null)
-        setLastSync(new Date().toLocaleTimeString('zh-CN'))
-      }
-    } catch {
-      if (isCurrent()) setApiError('暂时无法连接主机，保留上次读取的内容，连接恢复后会自动重试。')
-    } finally {
-      if (isCurrent()) setCatalogLoading(false)
-    }
-  }, [category, query, filters, page])
-
-  useLiveRefresh(syncCatalog, useApi && !reserving && !showPublish && !showAccount && !showReservations && !aiBookId && !reportBookId, catalogRevision)
-
-
-  const filteredBooks = useMemo(() => {
-    if (useApi) return books
-    const normalizedQuery = query.trim().toLowerCase()
-    return books.filter((book) => {
-      const matchesCategory = category === 'all' || book.category === category
-      const matchesQuery = !normalizedQuery || [book.title, book.author, book.publisher, ...book.tags].join(' ').toLowerCase().includes(normalizedQuery)
-      return matchesCategory && matchesQuery
-    })
-  }, [books, category, query, useApi])
-
-  const notify = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(null), 2600)
-  }
-
-  const reserveBook = async () => {
-    if (!selectedBook || reserveLock.current) return
-    if (useApi && !user) { setShowAccount(true); return }
-    reserveLock.current = true
-    setReserving(true)
-    try {
-      if (useApi) await createReservation(selectedBook.id, selectedBook.pickupPoint)
-      setBooks((current) => current.map((book) => book.id === selectedBook.id ? { ...book, status: 'reserved' } : book))
-      setSelectedBookId(null)
-      notify('预约已提交，等待卖家确认')
-    } catch (cause) {
-      notify(cause instanceof Error ? cause.message : '预约失败，请重试')
-      refreshBooks()
-    } finally {
-      reserveLock.current = false
-      setReserving(false)
-    }
-  }
-
-  const publishBook = async (book: Book, imageFile?: File) => {
-    const savedBook = useApi ? await createBook(book) : book
-    let imageWarning = false
-    if (useApi && imageFile) {
-      try { await uploadBookImage(savedBook.id, imageFile) } catch { imageWarning = true }
-    }
-    setShowPublish(false)
-    if (useApi) {
-      setPage(1)
-      refreshBooks()
-    } else {
-      setBooks((current) => [savedBook, ...current])
-    }
-    notify(imageWarning ? '书籍已发布，图片上传失败。请稍后补传封面' : useApi ? '书籍已发布到校园书架' : '书籍已保存到本地演示列表')
-  }
-
-  const submitReport = async (reason: string, description: string) => {
-    if (useApi && reportBookId) await createReport(reportBookId, reason, description)
-    setReportBookId(null)
-    setSelectedBookId(null)
-    notify(useApi ? '反馈已提交，项目人员会尽快核实' : '反馈已记录到本地演示流程')
-  }
-
-  function chooseCategory(next: Category) {
-    setCategory(next)
-    setPage(1)
-  }
-
-  function changeQuery(next: string) {
-    setQuery(next)
-    setPage(1)
-  }
-
-  function applyFilters(next: BookFilters) {
-    setFilters(next)
-    setPage(1)
-  }
-
-  const pageCount = Math.max(1, Math.ceil(catalogMeta.total / catalogMeta.pageSize))
-  const selectFeature = (nextCategory: Category) => {
-    chooseCategory(nextCategory)
-    document.querySelector('.section-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div><p className="eyebrow">珞珈书桥 · 校园图书循环共享</p><h1>一本书，连接更多珞珈人</h1></div>
-        <button className="icon-button" onClick={() => needLogin(() => setShowReservations(true))} aria-label="查看预约进度">♧</button>
-      </header>
-
-      <main>
-        <section className="hero-card">
-          <div className="hero-copy"><span className="hero-kicker">AI 辅助识别</span><h2>让闲置的书，继续被需要</h2><p>按书名、作者或出版社寻找合适的二手书，在线预约后在校内公共地点完成交接。</p></div>
-          <div className="hero-orbit" aria-hidden="true"><span>书</span><i /><i /><i /></div>
-        </section>
-
-        <section className="search-section" aria-label="搜索图书">
-          <label className="search-box"><span aria-hidden="true">⌕</span><input value={query} maxLength={100} onChange={(event) => changeQuery(event.target.value)} placeholder="搜索书名、作者、出版社..." />{query && <button className="clear-button" onClick={() => changeQuery('')} aria-label="清除搜索">×</button>}</label>
-          <div className="quick-tags" aria-label="快捷搜索">{['高等数学', 'C 语言', '考研资料'].map((tag) => <button key={tag} onClick={() => changeQuery(tag)}>{tag}</button>)}</div>
-        </section>
-
-        <section className="feature-grid" aria-label="平台功能">
-          <FeatureCard icon="▣" title="教材交易" description="专业教材，低价流转" tone="blue" onClick={() => selectFeature('textbook')} />
-          <FeatureCard icon="☰" title="课外读物" description="拓展阅读，分享好书" tone="green" onClick={() => selectFeature('reading')} />
-          <FeatureCard icon="♡" title="免费赠书" description="把闲置好书送给下一位同学" tone="gold" onClick={() => selectFeature('donation')} />
-        </section>
-
-        <section className="section-block">
-          <div className="section-heading"><div><p className="section-kicker">为你推荐</p><h2>校园共享书架</h2></div><button className="text-button" onClick={() => { chooseCategory('all'); changeQuery(''); applyFilters(DEFAULT_BOOK_FILTERS) }}>查看全部 <span>→</span></button></div>
-          <div className="category-tabs" role="tablist" aria-label="书籍分类">{(Object.keys(categoryLabels) as Category[]).map((item) => <button key={item} role="tab" aria-selected={category === item} className={category === item ? 'active' : ''} onClick={() => chooseCategory(item)}>{categoryLabels[item]}</button>)}</div>
-          {useApi && <details className="catalog-filters"><summary>筛选与排序</summary><BookFilterForm key={JSON.stringify(filters)} filters={filters} onApply={applyFilters} /></details>}
-          {useApi && <div className="live-status"><span>{catalogLoading ? '正在读取共享书架…' : apiError ? '连接暂不可用' : '共享书架 · 每5秒同步'}{lastSync && ` · 上次更新 ${lastSync}`}</span><button disabled={catalogLoading} onClick={refreshBooks}>刷新书架</button></div>}
-          {apiError && <p className="api-notice" role="alert">{apiError} <button onClick={refreshBooks}>重试</button></p>}
-          <div className="book-grid">{catalogLoading ? <p role="status">正在读取书籍…</p> : filteredBooks.length ? filteredBooks.map((book) => <BookCard key={book.id} book={book} onOpen={setSelectedBookId.bind(null, book.id)} />) : apiError ? null : <div className="empty-state"><span>⌕</span><strong>还没有找到合适的书</strong><p>试试换一个关键词，或者先浏览全部书籍。</p></div>}</div>
-          {useApi && !catalogLoading && catalogMeta.total > 0 && <nav className="catalog-pagination" aria-label="书架分页">
-            <button disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>上一页</button>
-            <span>第 {page} / {pageCount} 页 · 共 {catalogMeta.total} 本</span>
-            <button disabled={page >= pageCount} onClick={() => setPage((current) => current + 1)}>下一页</button>
-          </nav>}
-        </section>
-      </main>
-
-      <nav className="bottom-nav" aria-label="主导航">
-        {['首页', '发现', '发布', '记录', '我的'].map((item) => <button key={item} className={activeTab === item ? 'active' : ''} onClick={() => item === '发布' ? needLogin(() => setShowPublish(true)) : item === '我的' ? setShowAccount(true) : item === '记录' ? needLogin(() => setShowReservations(true)) : (setActiveTab(item), item === '发现' && document.querySelector('.search-section')?.scrollIntoView({ behavior: 'smooth' }))}><span className="nav-icon">{item === '发布' ? '+' : item === '首页' ? '⌂' : '◦'}</span><span>{item}</span></button>)}
-      </nav>
-
-      {selectedBook && <BookDetailDialog book={selectedBook} reserving={reserving} onClose={() => setSelectedBookId(null)} onReserve={reserveBook} onReport={() => needLogin(() => setReportBookId(selectedBook.id))} onRecognize={() => setAiBookId(selectedBook.id)} />}
-      {showPublish && <PublishBookDialog onClose={() => setShowPublish(false)} onSubmit={publishBook} />}
-      {showAccount && <AccountDialog key={user?.id ?? 'anonymous'} user={user} useApi={useApi} onClose={() => setShowAccount(false)} onLogin={async (id) => { const current = await login(id); setSignedInId(current.id); setUser(current); refreshBooks() }} onLogout={async () => { await logout(); setSignedInId(''); setUser(null); setShowReservations(false) }} onProfile={setUser} onReservations={() => { setShowAccount(false); setShowReservations(true) }} onBooksChange={refreshBooks} />}
-      {showReservations && <MyReservationsDialog useApi={useApi} onClose={() => setShowReservations(false)} onNotice={notify} onBookStatusChange={(bookId, status) => setBooks((current) => current.map((book) => book.id === bookId ? { ...book, status } : book))} />}
-      {reportBookId && <ReportDialog onClose={() => setReportBookId(null)} onSubmit={submitReport} />}
-      {aiBookId && <AIRecognitionDialog book={books.find((book) => book.id === aiBookId) ?? mockBooks[0]} useApi={useApi} onApplied={refreshBooks} onClose={() => setAiBookId(null)} />}
-      {toast && <div className="toast" role="status">{toast}</div>}
-    </div>
-  )
+  let content
+  if (loading || (protectedPage && !user)) content = <p className="loading" role="status">正在连接你的书桥…</p>
+  else if (authPage) content = <AuthPage key={path} registering={path === '/register'} next={params.get('next') ?? '/me'}/>
+  else if (path === '/') content = <HomePage/>
+  else if (path === '/discover') content = <CatalogPage key={location} search={rawSearch}/>
+  else if (path === '/publish') content = <PublishBookForm onSubmit={publish}/>
+  else if (parts[0] === 'books' && parts[1]) content = <BookRoute key={location + ':' + (user?.id ?? '')} id={parts[1]} action={parts[2]}/>
+  else if (path === '/records') content = <ReservationsPage onClose={() => navigate('/')} onNotice={notice}/>
+  else if (path === '/me') content = <ProfilePage/>
+  else if (path === '/me/edit') content = <EditProfilePage/>
+  else if (path === '/me/books' || path === '/me/favorites') content = <PersonalBooksPage key={location} kind={path.endsWith('favorites') ? 'favorites' : 'mine'} page={Math.max(1, Number(params.get('page')) || 1)}/>
+  else if (parts[0] === 'users' && parts[1]) content = <PersonalBooksPage key={location} kind={parts[1]} page={Math.max(1, Number(params.get('page')) || 1)}/>
+  else if (path === '/me/reports') content = <ReportsPage/>
+  else if (path === '/settings') content = <SettingsPage/>
+  else if (path === '/settings/password') content = <PasswordPage/>
+  else if (path === '/admin' || path === '/admin/reports') content = user?.role === 'admin' ? path.endsWith('reports') ? <ReportsPage admin/> : <AdminWorkspace onChanged={() => {}}/> : <Empty title="此页面仅管理员可用" link="/" label="返回首页"/>
+  else if (path === '/about') content = <section className="form-card about-page"><h1>珞珈书桥</h1><p>一本书，连接更多珞珈人。</p><p>在这里发布闲置书籍、发现好书、预约线下交接。书籍和个人资料保存在运行本站的主机上，登录后才能管理自己的内容。</p><p>请如实填写版本和品相，在公共地点核对实物，完成交接后由双方确认。本平台不提供在线支付，不以未经核验的学校身份或交易统计作保证。</p><h2>图片来源</h2><p>首页校园摄影：<a href="https://commons.wikimedia.org/wiki/File:Cherry_Blossom_in_Wuhan_University_1.jpg" target="_blank" rel="noreferrer">Zhangmoon618 / Wikimedia Commons</a>，<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noreferrer">CC BY-SA 3.0</a>，原图本地保存，页面采用裁切显示与渐变叠加。</p><p>旧版导入书籍已在说明中标注样例，封面及书目信息来自高等教育出版社公开目录；正常注册和发布的数据均真实保存。</p></section>
+  else content = <Empty title="这个页面不存在" link="/" label="返回首页"/>
+  return <SessionContext.Provider value={{ user, loading, setUser, notice }}><div className={`site-shell ${focusPage ? 'focused-page' : ''} ${path === '/' ? 'home-page' : ''}`}>{path !== '/' && <PageHeader title={authPage ? '珞珈书桥' : title} action={!authPage && <Link className="header-home" to="/" aria-label="返回首页"><Icon name="home" size={20}/></Link>}/>}<main key={path} className="page-content">{content}</main>{!focusPage && <nav className="bottom-nav" aria-label="主导航">{[{ path: '/', label: '首页', icon: 'home' }, { path: '/discover', label: '发现', icon: 'search' }, { path: '/publish', label: '发布', icon: 'plus' }, { path: '/records', label: '记录', icon: 'records' }, { path: '/me', label: '我的', icon: 'user' }].map((item) => <Link key={item.path} to={item.path} aria-current={(item.path === '/' ? path === '/' : path.startsWith(item.path)) ? 'page' : undefined} className={item.path === '/publish' ? 'nav-publish' : ''}><span><Icon name={item.icon} size={23}/></span><small>{item.label}</small></Link>)}</nav>}{toast && <div className="toast" role="status">{toast}<button aria-label="关闭提示" onClick={() => setToast('')}>×</button></div>}</div></SessionContext.Provider>
 }
 
-function FeatureCard({ icon, title, description, tone, onClick }: { icon: string; title: string; description: string; tone: 'blue' | 'green' | 'gold'; onClick: () => void }) {
-  return <button className={`feature-card ${tone}`} onClick={onClick}><span className="feature-icon">{icon}</span><strong>{title}</strong><small>{description}</small></button>
+function BookRoute({ id, action }: { id: string; action?: string }) {
+  const { user, notice } = useSession()
+  const [book, setBook] = useState<Book | null>(null)
+  const [error, setError] = useState('')
+  const [revision, setRevision] = useState(0)
+  const refresh = () => setRevision((n) => n + 1)
+  const sync = useCallback(async (current: () => boolean) => { try { const result = await fetchBook(id); if (current()) { setBook(result); setError('') } } catch (cause) { if (current()) setError(cause instanceof Error ? cause.message : '书籍加载失败') } }, [id])
+  useLiveRefresh(sync, true, revision)
+  if (!book) return error ? <ErrorNotice message={error} retry={refresh}/> : <p role="status" className="loading">正在读取书籍…</p>
+  if (action && action !== 'report' && user?.id !== book.sellerId) return <Empty title="只能管理自己发布的书籍" link={`/books/${id}`} label="查看书籍"/>
+  if (action && action !== 'report' && (book.isSuspended || !['available','offline','draft'].includes(book.status))) return <Empty title="当前书籍资料已锁定">{book.isSuspended ? book.moderationReason : '预约中和已完成的书籍不能更改资料，请先处理交易。'}</Empty>
+  if (action === 'images') return <BookImagesPage book={book} onClose={() => navigate(`/books/${id}`)} onChanged={refresh}/>
+  if (action === 'edit') return <PublishBookForm initialBook={book} onSubmit={async (value) => { await updateBook(value); notice('书籍资料已保存'); if (window.location.pathname === `/books/${id}/edit`) navigate(`/books/${id}`, true) }}/>
+  if (action === 'recognize') return book.coverUrl ? <AIRecognitionPage book={book} onApplied={refresh} onClose={() => navigate(`/books/${id}`, true)}/> : <Empty title="先上传清晰的书籍封面" link={`/books/${id}/images`} label="上传书籍图片">识别会读取实际图片，核对候选后才会保存到书籍资料。</Empty>
+  if (action === 'report') return <BookReportPage onSubmit={async (reason, description) => { await createReport(id, reason, description); notice('反馈已提交，可在我的反馈中查看处理结果'); navigate('/me/reports', true) }}/>
+  if (action) return <Empty title="这个书籍页面不存在" link={`/books/${id}`}/>
+  return <>{error && <ErrorNotice message={error} retry={refresh}/>}<BookDetailPage book={book} refresh={refresh} onFavorite={(value) => setBook((current) => current ? { ...current, isFavorite: value } : current)}/></>
 }
-
 export default App

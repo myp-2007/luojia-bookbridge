@@ -6,14 +6,14 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
 from app.db.base import Base
 from app.db.session import engine
-from app.routers import admin, ai, auth, books, health, reports, reservations
+from app.routers import admin, ai, auth, books, health, profiles, reports, reservations
 
 settings = get_settings()
 
@@ -25,7 +25,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version='0.2.0', lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version='0.3.0', lifespan=lifespan)
 Path(settings.storage_dir).mkdir(parents=True, exist_ok=True)
 app.mount('/storage', StaticFiles(directory=settings.storage_dir), name='storage')
 app.add_middleware(
@@ -35,7 +35,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-for router in [health.router, books.router, reservations.router, reports.router, auth.router, ai.router, admin.router]:
+for router in [health.router, books.router, reservations.router, reports.router, auth.router, ai.router, admin.router, profiles.router]:
     app.include_router(router, prefix='/api/v1')
 
 
@@ -44,7 +44,7 @@ async def request_id(request: Request, call_next):
     request.state.request_id = str(uuid4())
     origin = request.headers.get('origin')
     allowed = {str(request.base_url).rstrip('/'), *settings.cors_origin_list}
-    if request.method in {'POST', 'PATCH', 'DELETE'} and request.cookies.get('bookbridge_session') and origin and origin not in allowed:
+    if request.method in {'POST', 'PATCH', 'DELETE'} and origin and origin not in allowed:
         return JSONResponse(status_code=403, content={
             'code': 'INVALID_ORIGIN', 'message': '请求来源不被允许',
             'details': {}, 'requestId': request.state.request_id,
@@ -73,7 +73,18 @@ async def validation_error(request: Request, error: RequestValidationError):
     }))
 
 
-# The local demonstration serves the built SPA and API from one origin.
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as error:
+            accept = dict(scope['headers']).get(b'accept', b'').decode()
+            if error.status_code == 404 and scope['method'] in {'GET', 'HEAD'} and 'text/html' in accept and not scope['path'].lstrip('/').startswith(('api/', 'storage/')) and not Path(path).suffix:
+                return FileResponse(Path(self.directory) / 'index.html')
+            raise
+
+
+# Browser routes, API and uploads share one local origin.
 web_dist = Path(__file__).resolve().parents[3] / 'apps' / 'web' / 'dist'
 if web_dist.is_dir():
-    app.mount('/', StaticFiles(directory=web_dist, html=True), name='web')
+    app.mount('/', SPAStaticFiles(directory=web_dist, html=True), name='web')

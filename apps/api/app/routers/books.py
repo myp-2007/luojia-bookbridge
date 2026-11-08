@@ -6,7 +6,8 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.models.book import Book, BookStatus, BookCategory
 
-from app.core.auth import get_current_user_id
+from app.core.auth import demo_enabled, get_current_user_id, get_optional_user
+from app.models.user import User
 from app.db.session import get_db
 from app.providers.book_recognition import MockBookRecognitionProvider
 from app.schemas.ai import BookRecognitionRead, RecognitionFieldRead
@@ -31,6 +32,7 @@ def read_books(
     available_only: bool = False,
     sort: Literal['relevance', 'newest', 'price_asc', 'price_desc'] = 'relevance',
     db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_optional_user),
 ) -> BookListResponse:
     try:
         books, total = list_books(
@@ -40,7 +42,7 @@ def read_books(
         )
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
-    return BookListResponse(items=[to_book_read(book) for book in books], page=page, page_size=page_size, total=total)
+    return BookListResponse(items=[to_book_read(book, viewer.id if viewer else None) for book in books], page=page, page_size=page_size, total=total)
 
 
 @router.post('', response_model=BookRead, status_code=status.HTTP_201_CREATED)
@@ -66,7 +68,7 @@ def edit(book_id: UUID, payload: BookCreate, db: Session = Depends(get_db), user
         book.category = BookCategory(payload.category)
     except ValueError:
         raise HTTPException(422, '不支持的书籍分类')
-    for name in ['title', 'author', 'publisher', 'edition', 'condition', 'has_notes', 'description', 'pickup_point']:
+    for name in ['title', 'author', 'publisher', 'edition', 'isbn', 'condition', 'has_notes', 'description', 'pickup_point']:
         setattr(book, name, getattr(payload, name))
     book.price_cents = payload.price_cents if payload.price_cents is not None else round(payload.price * 100)
     db.commit()
@@ -82,11 +84,11 @@ def offline(book_id: UUID, db: Session = Depends(get_db), user_id: str = Depends
 
 
 @router.get('/{book_id}', response_model=BookRead)
-def read_book(book_id: UUID, db: Session = Depends(get_db)) -> BookRead:
+def read_book(book_id: UUID, db: Session = Depends(get_db), viewer: User | None = Depends(get_optional_user)) -> BookRead:
     book = get_book(db, book_id)
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
-    return to_book_read(book)
+    return to_book_read(book, viewer.id if viewer else None)
 
 
 @router.get('/{book_id}/images', response_model=list[BookImageRead])
@@ -132,6 +134,8 @@ async def upload_book_image(book_id: UUID, file: UploadFile = File(...), db: Ses
 
 @router.post('/{book_id}/ai-extract', response_model=BookRecognitionRead)
 def recognize_book(book_id: UUID, db: Session = Depends(get_db), seller_id: str = Depends(get_current_user_id)) -> BookRecognitionRead:
+    if not demo_enabled():
+        raise HTTPException(410, '旧识别入口已停用，请使用图片识别任务')
     book = get_book(db, book_id)
     if book is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='书籍不存在')
