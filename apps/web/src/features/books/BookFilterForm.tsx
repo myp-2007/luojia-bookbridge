@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { DEFAULT_BOOK_FILTERS, type BookFilters, type BookSort } from './book-api'
-import './catalog.css'
 
 export function BookFilterForm({ filters, onApply }: {
   filters: BookFilters

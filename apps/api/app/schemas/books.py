@@ -1,4 +1,5 @@
 from uuid import UUID
+import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -16,6 +17,7 @@ class BookCreate(APIModel):
     author: str | None = Field(default=None, max_length=160)
     publisher: str | None = Field(default=None, max_length=160)
     edition: str | None = Field(default=None, max_length=80)
+    isbn: str | None = Field(default=None, max_length=32)
     price: float = Field(default=0, ge=0, le=100000, allow_inf_nan=False)
     price_cents: int | None = Field(default=None, ge=0, le=10000000)
     condition: str = Field(default='待填写', max_length=40)
@@ -38,6 +40,16 @@ class BookCreate(APIModel):
             raise ValueError('书名不能为空')
         return value.strip()
 
+    @field_validator('isbn')
+    @classmethod
+    def normalize_isbn(cls, value):
+        if not value:
+            return None
+        result = re.sub(r'[\s-]', '', value).upper()
+        if not re.fullmatch(r'(?:\d{13}|\d{9}[\dX])', result):
+            raise ValueError('ISBN应为10位或13位')
+        return result
+
 
 class BookRead(APIModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
@@ -48,6 +60,7 @@ class BookRead(APIModel):
     author: str | None
     publisher: str | None
     edition: str | None
+    isbn: str | None = None
     price: float
     price_cents: int
     condition: str
@@ -60,6 +73,8 @@ class BookRead(APIModel):
     cover_url: str | None = None
     is_suspended: bool = False
     moderation_reason: str | None = None
+    is_favorite: bool = False
+    seller_active: bool = True
     created_at: UTCDatetime
 
 

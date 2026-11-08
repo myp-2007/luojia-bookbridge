@@ -2,6 +2,10 @@ export type BookCategory = 'textbook' | 'reading' | 'donation'
 export type BookStatus = 'available' | 'reserved' | 'completed' | 'offline' | 'draft'
 
 export interface Book {
+  isbn?: string | null
+  isFavorite?: boolean
+  sellerActive?: boolean
+  createdAt?: string
   id: string
   sellerId?: string
   coverUrl?: string

@@ -3,43 +3,26 @@ import { fetchBook } from '../books/book-api'
 import { changeReservation, fetchContact, fetchMyReservations, reservationUserId } from './reservation-api'
 import type { ReservationAction, ReservationRole } from './reservation-api'
 import type { Reservation } from '../../types/reservations'
-import type { BookStatus } from '../../types/books'
-import './reservations.css'
 import { useLiveRefresh } from '../../lib/use-live-refresh'
 
 type RecordItem = Reservation & { bookTitle: string }
-
-function currentTime(): string {
-  return new Date().toISOString()
-}
 
 const statusLabels: Record<Reservation['status'], string> = {
   pending: '等待卖家接受', confirmed: '等待线下交接', rejected: '卖家已拒绝',
   cancelled: '预约已取消', expired: '预约已过期', completed: '交易已完成', disputed: '争议处理中',
 }
 
-function demoRecords(): RecordItem[] {
-  return [{
-    id: 'demo-reservation', bookId: 'demo-book', buyerId: reservationUserId('buyer'),
-    bookTitle: '高等数学（第七版）', status: 'pending', pickupPoint: '图书馆正门',
-    proposedTime: null, expiresAt: null, createdAt: currentTime(),
-    buyerConfirmedAt: null, sellerConfirmedAt: null, completedAt: null,
-  }]
-}
-
 function formatTime(value: string | null): string {
   return value ? new Date(value).toLocaleString('zh-CN') : '待双方协商'
 }
 
-export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusChange }: {
-  useApi: boolean
+export function ReservationsPage({ onClose, onNotice }: {
   onClose: () => void
   onNotice: (message: string) => void
-  onBookStatusChange: (bookId: string, status: BookStatus) => void
 }) {
   const [role, setRole] = useState<ReservationRole>('buyer')
-  const [items, setItems] = useState<RecordItem[]>(useApi ? [] : demoRecords)
-  const [loading, setLoading] = useState(useApi)
+  const [items, setItems] = useState<RecordItem[]>([])
+  const [loading, setLoading] = useState(true)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submittingId, setSubmittingId] = useState<string | null>(null)
@@ -64,7 +47,7 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
       if (isCurrent()) setLoading(false)
     }
   }, [role])
-  useLiveRefresh(syncReservations, useApi && submittingId === null, reload)
+  useLiveRefresh(syncReservations, submittingId === null, reload)
 
 
   function refresh() {
@@ -80,12 +63,10 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
     setRole(next)
     setConfirmationId(null)
     setError(null)
-    if (useApi) {
-      setItems([])
-      setContactInfo({})
-      setSyncError(null)
-      setLoading(true)
-    }
+    setItems([])
+    setContactInfo({})
+    setSyncError(null)
+    setLoading(true)
   }
 
   async function act(item: RecordItem, action: ReservationAction) {
@@ -94,25 +75,9 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
     setSubmittingId(item.id)
     setError(null)
     try {
-      let updated: Reservation
-      if (useApi) {
-        updated = await changeReservation(item.id, action, role)
-      } else {
-        updated = { ...item }
-        if (action === 'confirm') updated.status = 'confirmed'
-        if (action === 'reject') updated.status = 'rejected'
-        if (action === 'cancel') updated.status = 'cancelled'
-        if (action === 'buyer-confirm') updated.buyerConfirmedAt = currentTime()
-        if (action === 'seller-confirm') updated.sellerConfirmedAt = currentTime()
-        if (updated.buyerConfirmedAt && updated.sellerConfirmedAt) {
-          updated.status = 'completed'
-          updated.completedAt = currentTime()
-        }
-      }
+      const updated = await changeReservation(item.id, action, role)
       setItems((current) => current.map((record) => record.id === updated.id ? { ...record, ...updated } : record))
       setConfirmationId(null)
-      const released = updated.status === 'cancelled' || updated.status === 'rejected'
-      if (useApi) onBookStatusChange(updated.bookId, released ? 'available' : updated.status === 'completed' ? 'completed' : 'reserved')
       onNotice(updated.status === 'completed' ? '双方已确认，交易完成' : '操作已保存')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '操作失败，请刷新后重试')
@@ -125,19 +90,18 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
   const pending = items.filter((item) => item.status === 'pending' || item.status === 'confirmed').length
 
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={() => { if (!busy.current) onClose() }}>
-      <section className="reservation-dialog trade-panel" role="dialog" aria-modal="true" aria-labelledby="reservation-title" onMouseDown={(event) => event.stopPropagation()}>
-        <button className="dialog-close" onClick={onClose} disabled={submittingId !== null} aria-label="关闭预约记录">×</button>
+    <div className="page-section">
+      <section className="trade-panel" role="region" aria-labelledby="reservation-title" onMouseDown={(event) => event.stopPropagation()}>
         <span className="section-kicker">我的书桥</span>
         <h2 id="reservation-title">预约与交接</h2>
         <p className="trade-intro">从预约到收书，每一步都有记录。</p>
-        <p className="trade-demo-note">{useApi ? '显示当前账号的记录，每5秒自动同步对方的操作。' : '示例演示 · 可切换双方完成交接，关闭面板后重置。'}</p>
+        <p className="trade-sync-note">每5秒同步预约与交接进度。</p>
         <div className="trade-tabs" aria-label="预约身份">
           <button aria-pressed={role === 'buyer'} disabled={submittingId !== null} onClick={() => selectRole('buyer')}>我买入的</button>
           <button aria-pressed={role === 'seller'} disabled={submittingId !== null} onClick={() => selectRole('seller')}>我卖出的</button>
         </div>
-        <div className="trade-summary"><span>{loading ? '读取中' : `${pending} 笔进行中 · ${items.length} 笔记录`}</span>{useApi && <button disabled={loading || submittingId !== null} onClick={refresh}>刷新记录</button>}</div>
-        {(error || syncError) && <div className="form-error" role="alert">{error || syncError}{useApi && <button disabled={submittingId !== null} onClick={refresh}>重新读取</button>}</div>}
+        <div className="trade-summary"><span>{loading ? '读取中' : `${pending} 笔进行中 · ${items.length} 笔记录`}</span>{<button disabled={loading || submittingId !== null} onClick={refresh}>刷新记录</button>}</div>
+        {(error || syncError) && <div className="form-error" role="alert">{error || syncError}{<button disabled={submittingId !== null} onClick={refresh}>重新读取</button>}</div>}
         {loading && <p role="status">正在读取预约记录…</p>}
         {!loading && !error && !syncError && !items.length && <div className="empty-state"><strong>暂无{role === 'buyer' ? '买入' : '卖出'}记录</strong><p>{role === 'buyer' ? '找到喜欢的书，发起你的第一笔预约。' : '发布书籍后，收到的预约会显示在这里。'}</p></div>}
         <div className="trade-list">{!loading && items.map((item) => {
@@ -154,11 +118,11 @@ export function MyReservationsDialog({ useApi, onClose, onNotice, onBookStatusCh
                 {role === 'seller' && item.status === 'pending' && <><button disabled={submittingId !== null} onClick={() => act(item, 'confirm')}>接受预约</button><button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'reject')}>拒绝预约</button></>}
                 {role === 'buyer' && active && !item.buyerConfirmedAt && !item.sellerConfirmedAt && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'cancel')}>取消预约</button>}
                 {item.status === 'confirmed' && !alreadyConfirmed && <button disabled={submittingId !== null} onClick={() => setConfirmationId(item.id)}>确认{role === 'buyer' ? '已收到书' : '已交出书'}</button>}
-                {useApi && ['confirmed', 'completed', 'disputed'].includes(item.status) && <button className="trade-secondary" disabled={submittingId !== null} onClick={async () => {
+                {['confirmed', 'completed', 'disputed'].includes(item.status) && <button className="trade-secondary" disabled={submittingId !== null} onClick={async () => {
                   try { const data = await fetchContact(item.id); setContactInfo((current) => ({ ...current, [item.id]: data.contact || '对方尚未提供联系方式，请按公共交接点约定会面' })) }
                   catch (cause) { setError(cause instanceof Error ? cause.message : '读取失败') }
                 }}>查看对方联系方式</button>}
-                {useApi && item.status === 'confirmed' && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'dispute')}>申请争议处理</button>}
+                {item.status === 'confirmed' && <button className="trade-secondary" disabled={submittingId !== null} onClick={() => act(item, 'dispute')}>申请争议处理</button>}
               </div>
               {contactInfo[item.id] && <p className="trade-help">{contactInfo[item.id]}</p>}
               {item.status === 'disputed' && <p className="trade-help">已冻结交易并提交管理员核实，请在“我的反馈”查看处理结果。</p>}

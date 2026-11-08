@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 
-export function ReportDialog({ onClose, onSubmit }: { onClose: () => void; onSubmit: (reason: string, description: string) => void | Promise<void> }) {
+export function BookReportPage({ onSubmit }: { onSubmit: (reason: string, description: string) => void | Promise<void> }) {
   const [reason, setReason] = useState('描述不符')
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -15,9 +15,9 @@ export function ReportDialog({ onClose, onSubmit }: { onClose: () => void; onSub
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={() => { if (!submitting) onClose() }}>
-      <form className="publish-dialog" role="dialog" aria-modal="true" aria-labelledby="report-title" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="dialog-title-row"><div><span className="section-kicker">问题反馈</span><h2 id="report-title">告诉我们发生了什么</h2></div><button type="button" className="dialog-close" disabled={submitting} onClick={onClose} aria-label="关闭反馈表单">×</button></div>
+    <div className="page-section">
+      <form className="form-card report-page" role="form" aria-labelledby="report-title" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="dialog-title-row"><div><span className="section-kicker">问题反馈</span><h2 id="report-title">告诉我们发生了什么</h2></div></div>
         <p className="dialog-intro">项目人员会根据反馈联系相关用户，必要时暂停书籍展示。</p>
         <label>问题类型<select value={reason} onChange={(event) => setReason(event.target.value)}><option>描述不符</option><option>未按时交接</option><option>联系方式问题</option><option>其他问题</option></select></label>
         <label>问题说明<textarea required maxLength={2000} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="请描述你遇到的情况" rows={5} /></label>

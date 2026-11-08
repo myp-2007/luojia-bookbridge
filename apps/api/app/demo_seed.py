@@ -39,6 +39,7 @@ def seed_books(db) -> None:
             raise ValueError('演示封面校验失败，请重新获取样例资料')
         book = Book(id=book_id, seller_id=sellers[index % len(sellers)], title=record['title'],
             author=record['author'], publisher=record['publisher'], edition=record['edition'],
+            isbn=record['isbn'].replace('-', ''),
             price_cents=record['priceCents'], category=BookCategory(record['category']),
             condition='9成新' if index % 3 else '8成新', has_notes=index % 3 == 0,
             description='【比赛样例，非真实出售】封面和书目信息来自出版社公开目录。价格、品相及交接安排均为虚构演示数据。ISBN：' + record['isbn'],
