@@ -31,6 +31,7 @@ class Book(Base):
     author: Mapped[str | None] = mapped_column(String(160), nullable=True)
     publisher: Mapped[str | None] = mapped_column(String(160), nullable=True)
     edition: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    isbn: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     price_cents: Mapped[int] = mapped_column(Integer, default=0)
     condition: Mapped[str] = mapped_column(String(40), default='待填写')
     has_notes: Mapped[bool] = mapped_column(default=False)

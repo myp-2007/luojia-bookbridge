@@ -16,20 +16,28 @@ def token_hash(token: str) -> str:
     return sha256(token.encode()).hexdigest()
 
 
-def get_current_user(
+def get_optional_user(
     bookbridge_session: str | None = Cookie(default=None),
     x_user_id: str | None = Header(default=None),
     x_role: str | None = Header(default=None),
     db: Session = Depends(get_db),
-) -> User:
+) -> User | None:
     if bookbridge_session:
         session = db.get(UserSession, token_hash(bookbridge_session))
         if session and session.expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
             user = db.get(User, session.user_id)
-            if user:
+            if user and (user.password_hash or demo_enabled()):
                 return user
-    if demo_enabled() and get_settings().allow_legacy_headers:
+    if (x_user_id or x_role) and demo_enabled() and get_settings().allow_legacy_headers:
         return User(id=x_user_id or 'dev-user', nickname='兼容测试用户', role='admin' if x_role == 'admin' else 'student')
+    return None
+
+
+def get_current_user(user: User | None = Depends(get_optional_user)) -> User:
+    if user:
+        return user
+    if demo_enabled() and get_settings().allow_legacy_headers:
+        return User(id='dev-user', nickname='兼容测试用户', role='student')
     raise HTTPException(401, '请先登录')
 
 

@@ -4,6 +4,7 @@ os.environ['DATABASE_URL'] = 'sqlite:///./test_bookbridge.db'
 os.environ['AI_PROVIDER'] = 'mock'
 os.environ['ENVIRONMENT'] = 'development'
 os.environ['ALLOW_LEGACY_HEADERS'] = 'true'
+os.environ['ALLOW_DEV_AUTH'] = 'true'
 
 from fastapi.testclient import TestClient
 

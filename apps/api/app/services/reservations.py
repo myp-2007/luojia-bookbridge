@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.models.book import Book, BookStatus
 from app.models.reservation import Reservation, ReservationStatus
 from app.models.report import Report
+from app.models.user import User
+from app.core.auth import demo_enabled
 from app.schemas.reservations import ReservationCreate, ReservationRead
 
 
@@ -42,6 +44,9 @@ def create_reservation(db: Session, book_id: UUID, buyer_id: str, payload: Reser
         raise ValueError('该书当前不可预约')
     if book.seller_id == buyer_id:
         raise ValueError('不能预约自己发布的书籍')
+    seller = db.get(User, book.seller_id)
+    if not demo_enabled() and (not seller or not seller.password_hash):
+        raise ValueError('发布者当前不可交易，请浏览其他书籍')
 
     reservation = Reservation(
         book_id=book.id,

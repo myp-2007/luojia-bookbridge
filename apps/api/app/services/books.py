@@ -1,18 +1,23 @@
 from uuid import UUID
+import unicodedata
 from fastapi import HTTPException
 
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, object_session
 from app.models.book_image import BookImage
+from app.models.favorite import BookFavorite
+from app.models.user import User
+from app.core.auth import demo_enabled
 
 from app.models.book import Book, BookCategory, BookStatus
 from app.schemas.books import BookCreate, BookRead
 
 
-def to_book_read(book: Book) -> BookRead:
+def to_book_read(book: Book, user_id: str | None = None) -> BookRead:
     db = object_session(book)
     cover = db.scalar(select(BookImage).where(BookImage.book_id == book.id).order_by(BookImage.sort_order, BookImage.created_at, BookImage.id).limit(1)) if db else None
     cover_url = '/storage/' + cover.storage_path.replace(chr(92), '/') if cover else None
+    seller = db.get(User, book.seller_id) if db else None
     return BookRead(
         id=book.id,
         seller_id=book.seller_id,
@@ -20,6 +25,7 @@ def to_book_read(book: Book) -> BookRead:
         author=book.author,
         publisher=book.publisher,
         edition=book.edition,
+        isbn=book.isbn,
         price=book.price_cents / 100,
         price_cents=book.price_cents,
         condition=book.condition,
@@ -32,6 +38,8 @@ def to_book_read(book: Book) -> BookRead:
         cover_url=cover_url,
         is_suspended=book.is_suspended,
         moderation_reason=book.moderation_reason,
+        is_favorite=bool(db.get(BookFavorite, (user_id, book.id))) if db and user_id else False,
+        seller_active=demo_enabled() or bool(seller and seller.password_hash),
         created_at=book.created_at,
     )
 
@@ -60,11 +68,16 @@ def list_books(
     if has_notes is not None:
         filters.append(Book.has_notes.is_(has_notes))
 
-    phrase = ' '.join((query or '').lower().split())
-    title = func.lower(Book.title)
-    searchable = [title, func.lower(Book.author), func.lower(Book.publisher), func.lower(Book.edition)]
+    phrase = ' '.join(unicodedata.normalize('NFKC', query or '').lower().split())
+    def searchable_text(field):
+        return func.replace(func.replace(func.lower(func.coalesce(field, '')), ' ', ''), '-', '')
+    title = searchable_text(Book.title)
+    searchable = [searchable_text(field) for field in [Book.title, Book.author, Book.publisher, Book.edition, Book.isbn, Book.description]]
+    aliases = {'高数': '高等数学', '线代': '线性代数', '大物': '大学物理', '概统': '概率论'}
     for term in dict.fromkeys(phrase.split()):
-        filters.append(or_(*(field.contains(term, autoescape=True) for field in searchable)))
+        variants = {term.replace('-', ''), aliases.get(term, term)}
+        filters.append(or_(*(field.contains(variant, autoescape=True) for field in searchable for variant in variants)))
+    phrase = aliases.get(phrase, phrase).replace(' ', '').replace('-', '')
 
     order = []
     if sort == 'price_asc':
@@ -96,6 +109,7 @@ def create_book(db: Session, payload: BookCreate, seller_id: str) -> Book:
         author=payload.author,
         publisher=payload.publisher,
         edition=payload.edition,
+        isbn=payload.isbn,
         price_cents=payload.price_cents if payload.price_cents is not None else round(payload.price * 100),
         condition=payload.condition,
         has_notes=payload.has_notes,
