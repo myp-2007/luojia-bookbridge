@@ -68,6 +68,10 @@ def edit(book_id: UUID, payload: BookCreate, db: Session = Depends(get_db), user
         book.category = BookCategory(payload.category)
     except ValueError:
         raise HTTPException(422, '不支持的书籍分类')
+    if 'pickup_location' in payload.model_fields_set or payload.pickup_point != book.pickup_point:
+        location = payload.pickup_location
+        book.pickup_latitude = location.latitude if location else None
+        book.pickup_longitude = location.longitude if location else None
     for name in ['title', 'author', 'publisher', 'edition', 'isbn', 'condition', 'has_notes', 'description', 'pickup_point']:
         setattr(book, name, getattr(payload, name))
     book.price_cents = payload.price_cents if payload.price_cents is not None else round(payload.price * 100)

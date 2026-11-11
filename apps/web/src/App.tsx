@@ -12,6 +12,7 @@ import { createBook, fetchBook, updateBook, uploadBookImage } from './features/b
 import { PublishBookForm } from './features/books/PublishBookForm'
 import { BookImagesPage } from './features/books/BookImagesPage'
 import { AIRecognitionPage } from './features/ai/AIRecognitionPage'
+import { AIRecommendationsPage } from './features/ai/AIRecommendationsPage'
 import { ReservationsPage } from './features/reservations/ReservationsPage'
 import { BookReportPage } from './features/reports/BookReportPage'
 import { createReport } from './features/reports/report-api'
@@ -21,7 +22,7 @@ import { AdminWorkspace } from './features/account/AdminWorkspace'
 import type { Book } from './types/books'
 import './App.css'
 
-const sectionTitles: Record<string,string> = { '/discover': '发现好书', '/publish': '发布书籍', '/records': '预约与交接', '/me': '我的书桥', '/me/edit': '编辑个人资料', '/me/books': '我的发布', '/me/favorites': '我的收藏', '/me/reports': '我的反馈', '/settings': '账户设置', '/settings/password': '修改密码', '/admin': '书籍与操作管理', '/admin/reports': '处理举报与争议', '/about': '关于珞珈书桥' }
+const sectionTitles: Record<string,string> = { '/discover': '发现好书', '/ai': '智能找书', '/publish': '发布书籍', '/records': '预约与交接', '/me': '我的书桥', '/me/edit': '编辑个人资料', '/me/books': '我的发布', '/me/favorites': '我的收藏', '/me/reports': '我的反馈', '/settings': '账户设置', '/settings/password': '修改密码', '/admin': '书籍与操作管理', '/admin/reports': '处理举报与争议', '/about': '关于珞珈书桥' }
 const actionTitles: Record<string,string> = { edit: '编辑书籍', images: '管理书籍图片', recognize: 'AI识别书籍', report: '反馈书籍问题' }
 
 function App() {
@@ -44,7 +45,7 @@ function App() {
     getMe().then((current) => { if (active) setUser(current) }).catch(() => {}).finally(() => { if (active) setLoading(false) })
     return () => { active = false; window.removeEventListener('session-expired', expired); clearTimeout(timer.current) }
   }, [setUser])
-  const protectedPage = path.startsWith('/me') || path.startsWith('/settings') || path.startsWith('/admin') || path === '/publish' || path === '/records' || (parts[0] === 'books' && parts.length > 2)
+  const protectedPage = path.startsWith('/me') || path.startsWith('/settings') || path.startsWith('/admin') || path === '/publish' || path === '/records' || path === '/ai' || (parts[0] === 'books' && parts.length > 2)
   useEffect(() => { if (!loading && protectedPage && !user) navigate('/login?next=' + encodeURIComponent(location), true) }, [loading, protectedPage, user, location])
   const title = parts[0] === 'books' ? actionTitles[parts[2]] ?? '书籍详情' : parts[0] === 'users' ? '书友主页' : sectionTitles[path] ?? '珞珈书桥'
   useEffect(() => { document.title = title + ' · 珞珈书桥' }, [title])
@@ -62,6 +63,7 @@ function App() {
   else if (authPage) content = <AuthPage key={path} registering={path === '/register'} next={params.get('next') ?? '/me'}/>
   else if (path === '/') content = <HomePage/>
   else if (path === '/discover') content = <CatalogPage key={location} search={rawSearch}/>
+  else if (path === '/ai') content = <AIRecommendationsPage/>
   else if (path === '/publish') content = <PublishBookForm onSubmit={publish}/>
   else if (parts[0] === 'books' && parts[1]) content = <BookRoute key={location + ':' + (user?.id ?? '')} id={parts[1]} action={parts[2]}/>
   else if (path === '/records') content = <ReservationsPage onClose={() => navigate('/')} onNotice={notice}/>

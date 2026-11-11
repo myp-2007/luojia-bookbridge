@@ -10,7 +10,7 @@ export interface BookRecognition {
   provider: string
 }
 
-interface BookApiRecord {
+export interface BookApiRecord {
   isbn?: string | null
   isFavorite?: boolean
   sellerActive?: boolean
@@ -31,6 +31,7 @@ interface BookApiRecord {
   category: BookCategory
   status: BookStatus
   pickupPoint: string | null
+  pickupLocation?: Book['pickupLocation']
   aiStatus: string
   createdAt: string
 }
@@ -83,6 +84,7 @@ export async function createBook(book: Book): Promise<Book> {
       condition: book.condition,
       category: book.category,
       pickupPoint: book.pickupPoint === '请选择交接点' ? null : book.pickupPoint,
+      pickupLocation: book.pickupLocation,
     }),
   })
   return toBook(record)
@@ -101,7 +103,7 @@ export async function uploadBookImage(bookId: string, file: File): Promise<void>
   await apiRequest(`/books/${bookId}/images`, { method: 'POST', body: formData })
 }
 
-function toBook(book: BookApiRecord): Book {
+export function toBook(book: BookApiRecord): Book {
   return {
     id: book.id,
     isbn: book.isbn,
@@ -123,6 +125,7 @@ function toBook(book: BookApiRecord): Book {
     status: book.status,
     tags: book.hasNotes ? ['有笔记'] : ['教材'],
     pickupPoint: book.pickupPoint ?? '待选择交接点',
+    pickupLocation: book.pickupLocation,
     distance: '校内',
     coverText: book.title.slice(0, 8),
     coverColor: 'linear-gradient(145deg, #2f8064, #91bd75)',
@@ -147,6 +150,7 @@ export async function updateBook(book: Book): Promise<Book> {
       title: book.title, author: book.author, publisher: book.publisher, edition: book.edition,
       priceCents: Math.round(book.price * 100), condition: book.condition,
       hasNotes: book.tags.includes('有笔记'), description: book.description, category: book.category, pickupPoint: book.pickupPoint,
+      pickupLocation: book.pickupLocation,
     }),
   })
   return toBook(result)

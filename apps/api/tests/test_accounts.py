@@ -1,8 +1,10 @@
 from io import BytesIO
 from uuid import uuid4
 
+import httpx
 from fastapi.testclient import TestClient
 from PIL import Image
+from pydantic import SecretStr
 import pytest
 from sqlalchemy import delete, select
 
@@ -40,6 +42,109 @@ def image_bytes():
     data = BytesIO()
     Image.new('RGB', (25, 30), 'blue').save(data, 'PNG')
     return data.getvalue()
+
+
+def test_baidu_places_require_login_and_keep_credentials_server_side(client, monkeypatch):
+    url = '/api/v1/maps/places'
+    assert client.get(url, params={'q': '武汉大学图书馆'}).status_code == 401
+    register(client)
+    settings = get_settings()
+    monkeypatch.setattr(settings, 'baidu_map_ak', None)
+    assert client.get(url, params={'q': '武汉大学图书馆'}).status_code == 503
+    assert client.get(url, params={'q': '  '}).status_code == 422
+    monkeypatch.setattr(settings, 'baidu_map_ak', SecretStr('baidu-test-key'))
+
+    def fake_baidu(endpoint, *, params, timeout):
+        assert endpoint == 'https://api.map.baidu.com/place/v3/region'
+        assert params['ak'] == 'baidu-test-key'
+        assert params['region'] == '武汉市' and params['region_limit'] == 'true'
+        assert timeout <= 5
+        if params['query'] == 'IP白名单测试':
+            return httpx.Response(200, json={'status': 210, 'message': 'private upstream error'}, request=httpx.Request('GET', endpoint))
+        content = {'status': 0, 'results': [
+            {'name': '武汉大学图书馆', 'address': '测试地址', 'location': {'lat': 30.54, 'lng': 114.36}},
+            {'name': '无效地点', 'location': {'lat': 999, 'lng': 114.36}},
+        ]} if params['query'] == '武汉大学图书馆' else {'status': 5, 'message': 'private upstream error'}
+        return httpx.Response(200, json=content, request=httpx.Request('GET', endpoint))
+
+    monkeypatch.setattr('app.routers.maps.httpx.get', fake_baidu)
+    response = client.get(url, params={'q': ' 武汉大学图书馆 '})
+    assert response.json() == {'items': [{
+        'name': '武汉大学图书馆', 'address': '测试地址', 'location': {'latitude': 30.54, 'longitude': 114.36},
+    }]}
+    rejected = client.get(url, params={'q': '其他地点'})
+    assert rejected.status_code == 502 and 'private upstream error' not in rejected.text
+    ip_rejected = client.get(url, params={'q': 'IP白名单测试'})
+    assert ip_rejected.status_code == 502
+    assert 'IP 白名单校验失败' in ip_rejected.json()['message']
+    assert 'baidu-test-key' not in ip_rejected.text and 'private upstream error' not in ip_rejected.text
+
+
+def test_recommendations_use_real_prices_and_locations(client, monkeypatch):
+    url = '/api/v1/ai/recommendations'
+    point = {'latitude': 30.54, 'longitude': 114.36}
+    assert client.post(url, json={'query': '高数', 'sort': 'price'}).status_code == 401
+    register(client, 'seller')
+
+    def publish(title, price, location=None):
+        response = client.post('/api/v1/books', json={
+            'title': title, 'priceCents': price, 'pickupPoint': '图书馆', 'pickupLocation': location,
+        })
+        assert response.status_code == 201
+        return response.json()
+
+    near = publish('高等数学第七版 近处', 1800, point)
+    far = publish('高等数学第七版 远处', 900, {**point, 'latitude': 30.56})
+    manual = publish('高等数学第七版 手填地点', 500)
+    publish('高等数学第六版', 100, point)
+    hidden = publish('高等数学第七版 已下架', 100, point)
+    assert client.post(f"/api/v1/books/{hidden['id']}/offline").status_code == 200
+    register(client, 'buyer')
+    publish('高等数学第七版 自己的书', 100, point)
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, 'ai_provider', 'openai-compatible')
+    monkeypatch.setattr(settings, 'ai_base_url', 'https://api.deepseek.com')
+    monkeypatch.setattr(settings, 'ai_api_key', SecretStr('deepseek-test-key'))
+    query = '想找高数第七版'
+
+    def fake_model(endpoint, *, headers, json, timeout):
+        assert endpoint == 'https://api.deepseek.com/chat/completions'
+        assert headers['Authorization'] == 'Bearer deepseek-test-key'
+        assert json['model'] == 'deepseek-flash'
+        assert json['messages'][-1] == {'role': 'user', 'content': query}
+        assert 'origin' not in json and timeout <= 8
+        return httpx.Response(200, json={
+            'choices': [{'message': {'content': '{"keywords":["高数","第七版"]}'}}],
+        }, request=httpx.Request('POST', endpoint))
+
+    monkeypatch.setattr('app.providers.deepseek.httpx.post', fake_model)
+    by_price = client.post(url, json={'query': query, 'sort': 'price'}).json()
+    assert by_price['source'] == 'deepseek' and by_price['keywords'] == ['高数', '第七版']
+    assert [item['book']['id'] for item in by_price['items']] == [manual['id'], far['id'], near['id']]
+    assert client.post(url, json={'query': query, 'sort': 'distance'}).status_code == 422
+    by_distance = client.post(url, json={'query': query, 'sort': 'distance', 'origin': point}).json()
+    assert [item['book']['id'] for item in by_distance['items']] == [near['id'], far['id']]
+    assert by_distance['items'][0]['distanceMeters'] == 0
+    assert 2200 < by_distance['items'][1]['distanceMeters'] < 2250
+    assert by_distance['unlocatedCount'] == 1
+
+    monkeypatch.setattr(settings, 'ai_api_key', None)
+    basic = client.post(url, json={'query': '高数 第七版', 'sort': 'price'}).json()
+    assert basic['source'] == 'keyword'
+    assert [item['book']['id'] for item in basic['items']] == [manual['id'], far['id'], near['id']]
+
+
+def test_book_pickup_coordinates_follow_the_location_text(client):
+    register(client)
+    data = {'title': '线性代数', 'pickupPoint': '图书馆'}
+    point = {'latitude': 30.54, 'longitude': 114.36}
+    assert client.post('/api/v1/books', json={'title': '线性代数', 'pickupLocation': point}).status_code == 422
+    book = client.post('/api/v1/books', json={**data, 'pickupLocation': point}).json()
+    assert book['pickupLocation'] == point
+    url = f"/api/v1/books/{book['id']}"
+    assert client.patch(url, json={**data, 'title': '线性代数上册'}).json()['pickupLocation'] == point
+    assert client.patch(url, json={**data, 'pickupPoint': '校门'}).json()['pickupLocation'] is None
 
 
 def test_register_login_logout_hash_and_duplicate_account(client):

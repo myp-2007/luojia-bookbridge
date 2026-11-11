@@ -1,3 +1,8 @@
+export interface Coordinates {
+  latitude: number
+  longitude: number
+}
+
 export type BookCategory = 'textbook' | 'reading' | 'donation'
 export type BookStatus = 'available' | 'reserved' | 'completed' | 'offline' | 'draft'
 
@@ -22,6 +27,7 @@ export interface Book {
   status: BookStatus
   tags: string[]
   pickupPoint: string
+  pickupLocation?: Coordinates | null
   distance: string
   coverText: string
   coverColor: string

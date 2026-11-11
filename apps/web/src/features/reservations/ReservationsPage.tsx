@@ -4,6 +4,7 @@ import { changeReservation, fetchContact, fetchMyReservations, reservationUserId
 import type { ReservationAction, ReservationRole } from './reservation-api'
 import type { Reservation } from '../../types/reservations'
 import { useLiveRefresh } from '../../lib/use-live-refresh'
+import { PickupMapLink } from '../maps/PlaceSearch'
 
 type RecordItem = Reservation & { bookTitle: string }
 
@@ -111,6 +112,7 @@ export function ReservationsPage({ onClose, onNotice }: {
             <article className="trade-record" key={item.id}>
               <div className="trade-record-heading"><h3>{item.bookTitle}</h3><span className={`trade-status ${item.status}`}>{statusLabels[item.status]}</span></div>
               <dl><div><dt>交接地点</dt><dd>{item.pickupPoint || '待双方协商'}</dd></div><div><dt>约定时间</dt><dd>{formatTime(item.proposedTime)}</dd></div></dl>
+              {item.pickupPoint && <PickupMapLink label={item.pickupPoint}/>}
               {(item.status === 'confirmed' || item.status === 'completed') && <div className="trade-progress" aria-label="双方交接确认进度"><span data-done={!!item.buyerConfirmedAt}>买家{item.buyerConfirmedAt ? '已确认' : '待确认'}</span><span data-done={!!item.sellerConfirmedAt}>卖家{item.sellerConfirmedAt ? '已确认' : '待确认'}</span></div>}
               {item.completedAt && <p className="trade-completed">完成于 {formatTime(item.completedAt)}</p>}
               {item.status === 'confirmed' && alreadyConfirmed && <p className="trade-help">你的交接已确认，等待另一方确认。</p>}

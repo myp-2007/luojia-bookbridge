@@ -32,6 +32,45 @@ async function openBook(page: Page, title: string) {
   await expect(page).toHaveURL(/\/books\//)
 }
 
+test('smart search ranks the same matches by price or a selected Baidu map origin', async ({ page, request }) => {
+  const query = `测距教材-${Date.now()}`
+  const location = { latitude: 30.54, longitude: 114.36 }
+  const places = { items: [{ name: '武汉大学图书馆', address: '武汉大学校内', location }] }
+  await page.route('**/api/v1/maps/places?*', (route) => route.fulfill({ json: places }))
+  await loginUI(page, users.seller)
+  await page.goto('/publish')
+  await page.getByLabel('书名', { exact: true }).fill(`${query} 近处`)
+  await page.getByLabel('价格（元）').fill('20')
+  await page.getByLabel('交接地点').fill('武汉大学图书馆')
+  await page.getByRole('button', { name: '在百度地图搜索' }).click()
+  await page.getByRole('button', { name: '选用武汉大学图书馆' }).click()
+  await page.getByRole('button', { name: '发布书籍' }).click()
+  await expect(page.getByRole('link', { name: '在百度地图查看' })).toHaveAttribute('href', /api\.map\.baidu\.com\/marker\?/)
+
+  await loginAPI(request, users.seller)
+  await createBook(request, `${query} 远处`, {
+    priceCents: 1000, pickupLocation: { ...location, latitude: 30.56 },
+  })
+  await loginUI(page, users.buyer)
+  await page.goto('/')
+  await page.getByRole('link', { name: /智能找书/ }).click()
+  await page.getByLabel('找书描述').fill(query)
+  await page.getByRole('button', { name: '找匹配的书' }).click()
+  const results = page.getByRole('region', { name: /按(价格|距离)推荐/ }).getByRole('link')
+  await expect(results).toHaveCount(2)
+  await expect(results.first()).toContainText('远处')
+  await page.getByLabel('优先排序').selectOption('distance')
+  await expect(page.getByRole('button', { name: '找匹配的书' })).toBeDisabled()
+  await page.getByLabel('从哪里出发？').fill('武汉大学图书馆')
+  await page.getByRole('button', { name: '在百度地图搜索' }).click()
+  await page.getByRole('button', { name: '选用武汉大学图书馆' }).click()
+  await page.getByRole('button', { name: '找匹配的书' }).click()
+  await expect(results.first()).toContainText('近处')
+  await expect(results.first()).toContainText('直线 0 米')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.screenshot({ path: 'test-results/smart-search-mobile.png', fullPage: true })
+})
+
 test('registration is a real account and login has one form, no account selector', async ({ page }) => {
   await page.goto('/me')
   await expect(page).toHaveURL(/\/login\?next=/)

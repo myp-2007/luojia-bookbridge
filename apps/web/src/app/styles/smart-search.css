@@ -1,0 +1,49 @@
+.smart-search-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  margin: 12px 0;
+  padding: 8px 14px;
+  border: 1px solid #dce7f6;
+  border-radius: 12px;
+  background: #f1f6ff;
+  color: #254e96;
+}
+.smart-search-entry:hover { background: #e9f1ff; }
+.smart-search-entry span { flex: 1; }
+.smart-search-entry small, .place-results small, .recommendation-list small {
+  display: block;
+  color: #52637d;
+  line-height: 1.5;
+}
+.place-search { margin: 8px 0 12px; }
+.place-search .button.secondary { color: #226649; }
+.place-search .button.secondary:hover:not(:disabled) { background: #edf7f1; }
+.place-results, .recommendation-list { list-style: none; padding: 0; margin: 12px 0; }
+.place-results li, .recommendation-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2eaf5;
+  overflow-wrap: anywhere;
+}
+.place-results button { flex-shrink: 0; padding-inline: 14px; }
+.pickup-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-weight: 650;
+  font-size: 14px;
+}
+.pickup-map-link:hover, .recommendation-list a:hover strong { text-decoration: underline; }
+.smart-search-page { max-width: 760px; margin-inline: auto; }
+.smart-search-page .field-help { color: #52637d; }
+.smart-search-page input::placeholder, .smart-search-page textarea::placeholder { color: #64748b; }
+.smart-search-results { margin: 24px 0; }
+.recommendation-list a { color: var(--ink); }
+.recommendation-list a > :last-child { text-align: right; flex-shrink: 0; }
+.recommendation-list .price { color: #a63929; }

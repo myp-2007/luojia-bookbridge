@@ -5,6 +5,56 @@ info:
   description: Local campus book marketplace with real password accounts, profiles
     and persistent SQLite/uploads. Normal startup disables legacy development authentication.
 paths:
+  /api/v1/maps/places:
+    get:
+      tags: [maps]
+      summary: 在武汉市搜索百度地图地点（需要登录）
+      parameters:
+      - name: q
+        in: query
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 120}
+      responses:
+        '200':
+          description: 最多八个地点，坐标为 BD-09
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceSearchResult'
+              example: {items: [{name: 武汉大学图书馆, address: 示例地址, location: {latitude: 30.54, longitude: 114.36}}]}
+        '401': {description: 请先登录}
+        '422': {description: 查询词为空或格式无效}
+        '502': {description: 百度地图上游查询失败，百度状态码 210 时提示配置公网出口 IP 白名单}
+        '503':
+          description: 百度地图 AK 未配置
+          content:
+            application/json:
+              example: {code: HTTP_503, message: 百度地图搜索尚未配置，可手动填写地点, details: {}, requestId: '示例'}
+  /api/v1/ai/recommendations:
+    post:
+      tags: [ai]
+      summary: 使用 DeepSeek 解析检索词并按价格或直线距离推荐可交易书籍（需要登录）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecommendationQuery'
+            example: {query: 想找第七版高等数学, sort: price}
+      responses:
+        '200':
+          description: 最多十二本匹配书籍，价格与距离来自平台数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResult'
+              example: {items: [], keywords: [高等数学, 第七版], source: deepseek, unlocatedCount: 0}
+        '401': {description: 请先登录}
+        '422':
+          description: 搜索描述无效，或距离排序缺少有效起点
+          content:
+            application/json:
+              example: {code: VALIDATION_ERROR, message: 请检查输入字段, details: [], requestId: '示例'}
   /api/v1/health:
     get:
       tags:
@@ -4185,6 +4235,65 @@ paths:
       - sessionCookie: []
 components:
   schemas:
+    Coordinates:
+      type: object
+      description: 百度地图 BD-09 经纬度
+      required: [latitude, longitude]
+      properties:
+        latitude: {type: number, minimum: -90, maximum: 90}
+        longitude: {type: number, minimum: -180, maximum: 180}
+    Place:
+      type: object
+      required: [name, address, location]
+      properties:
+        name: {type: string}
+        address: {type: string}
+        location:
+          $ref: '#/components/schemas/Coordinates'
+    PlaceSearchResult:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/Place'
+    RecommendationQuery:
+      type: object
+      required: [query, sort]
+      properties:
+        query: {type: string, minLength: 1, maxLength: 200}
+        sort: {type: string, enum: [price, distance]}
+        origin:
+          description: 距离排序必填的 BD-09 起点
+          anyOf:
+          - $ref: '#/components/schemas/Coordinates'
+          - type: 'null'
+    RecommendationItem:
+      type: object
+      required: [book, distanceMeters]
+      properties:
+        book:
+          $ref: '#/components/schemas/BookRead'
+        distanceMeters:
+          anyOf:
+          - {type: integer, minimum: 0}
+          - type: 'null'
+    RecommendationResult:
+      type: object
+      required: [items, keywords, source, unlocatedCount]
+      properties:
+        items:
+          type: array
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/RecommendationItem'
+        keywords:
+          type: array
+          items: {type: string}
+        source: {type: string, enum: [deepseek, keyword]}
+        unlocatedCount: {type: integer, minimum: 0}
     Body_upload_avatar_api_v1_me_avatar_post:
       properties:
         file:
@@ -4281,6 +4390,11 @@ components:
             maxLength: 120
           - type: 'null'
           title: Pickuppoint
+        pickupLocation:
+          description: 选中的百度地图位置，需同时提供地点文本
+          anyOf:
+          - $ref: '#/components/schemas/Coordinates'
+          - type: 'null'
       type: object
       required:
       - title
@@ -4402,6 +4516,10 @@ components:
           - type: string
           - type: 'null'
           title: Pickuppoint
+        pickupLocation:
+          anyOf:
+          - $ref: '#/components/schemas/Coordinates'
+          - type: 'null'
         aiStatus:
           type: string
           title: Aistatus

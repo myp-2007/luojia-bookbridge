@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { fetchPickupPoints } from './book-api'
 import type { Book, BookCategory } from '../../types/books'
 import { Icon } from '../../components/ui'
+import { PlaceSearch } from '../maps/PlaceSearch'
 
 export function PublishBookForm({ initialBook, onSubmit }: {
   initialBook?: Book; onSubmit: (book: Book, files?: File[]) => void | Promise<void>
@@ -17,6 +18,7 @@ export function PublishBookForm({ initialBook, onSubmit }: {
   const [notes, setNotes] = useState(initialBook?.tags.includes('有笔记') ?? false)
   const [description, setDescription] = useState(initialBook?.description ?? '')
   const [pickup, setPickup] = useState(initialBook?.pickupPoint ?? '')
+  const [pickupLocation, setPickupLocation] = useState(initialBook?.pickupLocation ?? null)
   const [points, setPoints] = useState<string[]>([])
   const [attachments, setAttachments] = useState<{ file: File; url: string }[]>([])
   const urls = useRef<string[]>([])
@@ -37,7 +39,7 @@ export function PublishBookForm({ initialBook, onSubmit }: {
         title: title.trim(), author: author.trim(), publisher: publisher.trim(), edition: edition.trim(), isbn: isbn.trim() || null,
         price: Number(price), category, condition, description: description.trim(),
         status: initialBook?.status ?? 'available', tags: notes ? ['有笔记'] : ['无笔记'],
-        pickupPoint: pickup.trim(), distance: '校内', coverText: title.slice(0, 8), coverColor: '#edf4ef',
+        pickupPoint: pickup.trim(), pickupLocation, distance: '校内', coverText: title.slice(0, 8), coverColor: '#edf4ef',
       }, files)
     } catch (cause) { setError(cause instanceof Error ? cause.message : '保存失败，请重试') }
     finally { setBusy(false) }
@@ -55,7 +57,9 @@ export function PublishBookForm({ initialBook, onSubmit }: {
       <div className="form-row"><label>出版社<input maxLength={160} value={publisher} onChange={(e) => setPublisher(e.target.value)} /></label><label>ISBN（可选）<input maxLength={32} value={isbn} onChange={(e) => setIsbn(e.target.value)} placeholder="封底10位或13位书号"/></label></div>
       <div className="form-row"><label>分类<select aria-label="分类" value={category} onChange={(e) => { const value = e.target.value as BookCategory; setCategory(value); if (value === 'donation') setPrice('0') }}><option value="textbook">教材交易</option><option value="reading">课外读物</option><option value="donation">免费赠书</option></select></label><label>价格（元）<input required disabled={category === 'donation'} type="number" min="0" max="100000" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label></div>
       <div className="form-row"><label>新旧程度<select value={condition} onChange={(e) => setCondition(e.target.value)}><option>全新</option><option>9成新</option><option>8成新</option><option>7成新及以下</option></select></label><label>笔记情况<select value={notes ? 'yes' : 'no'} onChange={(e) => setNotes(e.target.value === 'yes')}><option value="no">无笔记</option><option value="yes">有笔记</option></select></label></div>
-      <label>取书地点 <span className="required">*</span><input required list="pickup-points" aria-label="交接地点" maxLength={120} value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="选择或填写校内公共地点"/><datalist id="pickup-points">{points.map((point) => <option key={point}>{point}</option>)}</datalist></label>
+      <label>取书地点 <span className="required">*</span><input required list="pickup-points" aria-label="交接地点" maxLength={120} value={pickup} onChange={(e) => { setPickup(e.target.value); setPickupLocation(null) }} placeholder="选择或填写校内公共地点"/><datalist id="pickup-points">{points.map((point) => <option key={point}>{point}</option>)}</datalist></label>
+      <PlaceSearch query={pickup} onSelect={(place, label) => { setPickup(label); setPickupLocation(place.location) }}/>
+      <p className="field-help">{pickupLocation ? '已标记地图位置，可参与距离排序。' : '可手动填写。选用地图地点后，买家能按距离找到这本书。'}</p>
       <label>补充说明<textarea maxLength={2000} rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="介绍书籍状况、笔记、缺页等情况，避免公开填写私密联系方式。"/></label>
       {category === 'donation' && <p className="info-note">免费赠书价格固定为0元，同样通过预约和双方确认完成交接。</p>}
       {error && <p className="form-error" role="alert">{error}</p>}

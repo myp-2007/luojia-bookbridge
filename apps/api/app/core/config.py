@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ai_base_url: str = 'https://api.openai.com/v1'
     ai_model: str = ''
     ai_api_key: SecretStr | None = None
+    baidu_map_ak: SecretStr | None = None
 
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 

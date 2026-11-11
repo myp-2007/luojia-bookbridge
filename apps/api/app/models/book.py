@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -39,6 +39,8 @@ class Book(Base):
     category: Mapped[BookCategory] = mapped_column(Enum(BookCategory), default=BookCategory.TEXTBOOK)
     status: Mapped[BookStatus] = mapped_column(Enum(BookStatus), default=BookStatus.DRAFT, index=True)
     pickup_point: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pickup_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pickup_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_status: Mapped[str] = mapped_column(String(30), default='not_started')
     is_suspended: Mapped[bool] = mapped_column(default=False, server_default='0')
     moderation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

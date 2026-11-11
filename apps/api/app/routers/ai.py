@@ -10,9 +10,22 @@ from app.core.dates import UTCDatetime
 from app.db.session import get_db
 from app.models.ai_task import AITask
 from app.models.book import Book, BookStatus
+from app.providers.deepseek import deepseek_keywords
+from app.schemas.recommendations import RecommendationQuery, RecommendationResult
 from app.services.ai_tasks import run_task
+from app.services.recommendations import recommend_books
 
 router = APIRouter(tags=['ai'])
+
+
+@router.post('/ai/recommendations', response_model=RecommendationResult, responses={401: {'description': '请先登录'}})
+def recommend(
+    payload: RecommendationQuery, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id),
+) -> RecommendationResult:
+    # Do not hold the SQLite transaction while waiting for DeepSeek.
+    db.rollback()
+    keywords = deepseek_keywords(payload.query)
+    return recommend_books(db, payload, user_id, keywords)
 
 
 class TaskRead(BaseModel):

@@ -30,3 +30,16 @@ BookCreate/BookRead增加可选isbn（10或13位，输入去空格与连字符�
 正常启动入口start.cmd与infra/start-local.ps1（旧start-demo.ps1兼容转发），默认禁用演示登录、不初始化五个账号、不自动追加样例。继续使用现有本机数据库和图片路径避免丢数据。可选-SampleBooks仅显式导入带来源的样例，普通注册和发布均为真实记录。不新增云服务/数据库服务或收费依赖。
 
 密码摘要参数参考[OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)。学校认证暂缓；正常运行不开放旧版身份请求头。
+
+## 智能找书与地图交接点
+
+| 方法与路径 | 权限与输入 | 输出与失败 |
+| --- | --- | --- |
+| GET /maps/places?q=武汉大学图书馆 | 登录。查询词去掉首尾空格后为 1–120 字。后端使用百度 Web 服务 AK 在武汉市检索 | 200 `{"items":[{"name":"武汉大学图书馆","address":"示例地址","location":{"latitude":30.54,"longitude":114.36}}]}`，最多 8 项，无匹配返回空数组。未配置 AK 返回 503，上游请求失败返回 502，空查询返回 422。坐标为 BD-09 |
+| POST /ai/recommendations | 登录。JSON 示例 `{"query":"想找第七版高等数学","sort":"price"}`。检索词 1–200 字，排序为 `price` 或 `distance`。距离排序必须提供用户在地图中选定的 `origin`，其字段为 `latitude`、`longitude` | 200 返回 `items`（每项含 `book`、`distanceMeters`）、`keywords`、`source`（`deepseek` 或 `keyword`）、`unlocatedCount`。最多 12 本可交易的匹配书籍。未登录 401，缺少距离起点或输入非法返回 422。模型未配置或失败时以原词检索，返回 `keyword` |
+
+DeepSeek 只接收检索描述并提取关键词。价格使用数据库中的整数分，距离使用同一坐标系下的近似直线距离，模型不参与排序。只检索当前用户之外、账号可交易且未受管理限制的在售书籍。按价格排序覆盖所有匹配书籍，按距离排序只包含有坐标的匹配书籍，缺坐标数量返回 `unlocatedCount`。
+
+书籍创建、修改与响应新增可空的 `pickupLocation`，结构与地图响应的 `location` 一致。保存坐标时必须有地点文本。旧记录无需回填。修改文本时未提交新坐标则清除旧坐标。旧客户端省略坐标且地点文本保持不变时保留原坐标。数据库迁移为 books 新增两个可空坐标列。
+
+失败示例 `GET /maps/places?q=武汉大学图书馆` 在服务未配置时返回 503 和 `{"code":"HTTP_503","message":"百度地图搜索尚未配置，可手动填写地点","details":{},"requestId":"…"}`。百度返回 210 时，本站返回 502，提示在百度控制台添加网站主机的公网出口 IP 白名单。其他上游错误使用通用提示，原始响应与密钥不回传。

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core.naming import to_camel
 from app.core.dates import UTCDatetime
 from app.models.book import BookStatus, BookCategory
+from app.schemas.maps import Coordinates
 
 
 class APIModel(BaseModel):
@@ -25,6 +26,13 @@ class BookCreate(APIModel):
     description: str | None = Field(default=None, max_length=2000)
     category: str = 'textbook'
     pickup_point: str | None = Field(default=None, max_length=120)
+    pickup_location: Coordinates | None = None
+
+    @model_validator(mode='after')
+    def require_pickup_label(self):
+        if self.pickup_location and not (self.pickup_point or '').strip():
+            raise ValueError('保存地图位置时，请同时填写交接地点')
+        return self
 
     @model_validator(mode='after')
     def donation_is_free(self):
@@ -69,6 +77,7 @@ class BookRead(APIModel):
     category: BookCategory
     status: BookStatus
     pickup_point: str | None
+    pickup_location: Coordinates | None = None
     ai_status: str
     cover_url: str | None = None
     is_suspended: bool = False

@@ -11,6 +11,26 @@ from app.core.auth import demo_enabled
 
 from app.models.book import Book, BookCategory, BookStatus
 from app.schemas.books import BookCreate, BookRead
+from app.schemas.maps import Coordinates
+
+
+BOOK_ALIASES = {'高数': '高等数学', '线代': '线性代数', '大物': '大学物理', '概统': '概率论'}
+
+
+def normalize_book_query(query: str) -> str:
+    return ' '.join(unicodedata.normalize('NFKC', query).lower().split())
+
+
+def searchable_text(field):
+    return func.replace(func.replace(func.lower(func.coalesce(field, '')), ' ', ''), '-', '')
+
+
+def book_search_filters(phrase: str):
+    fields = [Book.title, Book.author, Book.publisher, Book.edition, Book.isbn, Book.description]
+    searchable = [searchable_text(field) for field in fields]
+    for term in dict.fromkeys(phrase.split()):
+        variants = {term.replace('-', ''), BOOK_ALIASES.get(term, term)}
+        yield or_(*(field.contains(variant, autoescape=True) for field in searchable for variant in variants))
 
 
 def to_book_read(book: Book, user_id: str | None = None) -> BookRead:
@@ -34,6 +54,8 @@ def to_book_read(book: Book, user_id: str | None = None) -> BookRead:
         category=book.category.value,
         status=book.status.value,
         pickup_point=book.pickup_point,
+        pickup_location=Coordinates(latitude=book.pickup_latitude, longitude=book.pickup_longitude)
+        if book.pickup_latitude is not None and book.pickup_longitude is not None else None,
         ai_status=book.ai_status,
         cover_url=cover_url,
         is_suspended=book.is_suspended,
@@ -68,16 +90,10 @@ def list_books(
     if has_notes is not None:
         filters.append(Book.has_notes.is_(has_notes))
 
-    phrase = ' '.join(unicodedata.normalize('NFKC', query or '').lower().split())
-    def searchable_text(field):
-        return func.replace(func.replace(func.lower(func.coalesce(field, '')), ' ', ''), '-', '')
+    phrase = normalize_book_query(query or '')
+    filters.extend(book_search_filters(phrase))
     title = searchable_text(Book.title)
-    searchable = [searchable_text(field) for field in [Book.title, Book.author, Book.publisher, Book.edition, Book.isbn, Book.description]]
-    aliases = {'高数': '高等数学', '线代': '线性代数', '大物': '大学物理', '概统': '概率论'}
-    for term in dict.fromkeys(phrase.split()):
-        variants = {term.replace('-', ''), aliases.get(term, term)}
-        filters.append(or_(*(field.contains(variant, autoescape=True) for field in searchable for variant in variants)))
-    phrase = aliases.get(phrase, phrase).replace(' ', '').replace('-', '')
+    phrase = BOOK_ALIASES.get(phrase, phrase).replace(' ', '').replace('-', '')
 
     order = []
     if sort == 'price_asc':
@@ -103,6 +119,7 @@ def create_book(db: Session, payload: BookCreate, seller_id: str) -> Book:
         category = BookCategory(payload.category)
     except ValueError as error:
         raise ValueError('不支持的书籍分类') from error
+    location = payload.pickup_location
     book = Book(
         seller_id=seller_id,
         title=payload.title.strip(),
@@ -117,6 +134,8 @@ def create_book(db: Session, payload: BookCreate, seller_id: str) -> Book:
         category=category,
         status=BookStatus.AVAILABLE,
         pickup_point=payload.pickup_point,
+        pickup_latitude=location.latitude if location else None,
+        pickup_longitude=location.longitude if location else None,
     )
     db.add(book)
     db.commit()
